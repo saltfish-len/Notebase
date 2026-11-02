@@ -46,7 +46,10 @@ class FrequencyEnricher:
         self.max_keywords = max_keywords
         self.max_tags = max_tags
 
-    def enrich(self, content: str) -> Enrichment:
+    def enrich(self, contents: list[str]) -> list[Enrichment]:
+        return [self.enrich_one(c) for c in contents]
+
+    def enrich_one(self, content: str) -> Enrichment:
         counts = Counter(tokenize(_URL.sub(" ", content)))
         keywords = [w for w, _ in counts.most_common(self.max_keywords)]
         hashtags = [h.lower() for h in _HASHTAG.findall(content)]

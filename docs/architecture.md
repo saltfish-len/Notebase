@@ -5,8 +5,9 @@ Notebase has two verbs, `write` and `find`. Each one is a fixed pipeline of
 touching anything else. Right now every box has a placeholder stub
 (`notebase/blackbox/stubs.py`), so the whole system runs end to end on MongoDB.
 Boxes get replaced by real implementations one at a time. So far the
-**Embedder** is real (`notebase/blackbox/embedders.py`, see
-[embedding.md](embedding.md)).
+**Embedder** (`notebase/blackbox/embedders.py`, see [embedding.md](embedding.md))
+and the **Atomizer** and **Enricher** (`notebase/blackbox/llm.py`, see
+[llm.md](llm.md)) are real.
 
 ## Layers
 
@@ -61,9 +62,9 @@ flowchart LR
 
 | Black box | Contract | Current stub | Intended real version |
 |---|---|---|---|
-| Atomizer | `Capture -> list[str]` | split on blank lines | LLM splits input into one idea per note |
-| Contextualizer | `(fragment, Capture) -> str` | identity | LLM resolves pronouns and references so the note stands alone |
-| Enricher | `str -> Enrichment` | top-frequency words, `#hashtags` as tags, URLs as entities | LLM keywords + synonyms, tags normalized against existing vocabulary, NER |
+| Atomizer | `Capture -> list[str]` | ✅ **real**: Claude (Haiku 5.5) splits into self-contained notes; paragraph split as fallback | n/a |
+| Contextualizer | `(fragment, Capture) -> str` | identity (the LLM Atomizer already resolves references) | separate pass only if atomizing and contextualizing need different models |
+| Enricher | `list[str] -> list[Enrichment]` (one call per capture) | ✅ **real**: Claude (Haiku 5.5) keywords with synonyms and zh/en equivalents, tags reused from the store's vocabulary, entities; frequency stub as fallback | n/a |
 | Embedder | `embed_documents(list[str])`, `embed_query(str)` | ✅ **real**: Qwen3-Embedding-0.6B (local); hashing stub kept for tests | n/a |
 | Linker | `(Note, store, siblings) -> list[Link]` | top-k calibrated similarity above a threshold | similarity + shared entities + temporal proximity, LLM-judged relations |
 

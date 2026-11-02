@@ -153,6 +153,7 @@ notebase/
 ├── blackbox/
 │   ├── interfaces.py   # the 10 black-box Protocols
 │   ├── embedders.py    # real Embedder (Qwen3 via sentence-transformers)
+│   ├── llm.py          # real Atomizer + Enricher (Claude)
 │   └── stubs.py        # placeholder implementations
 ├── storage/
 │   ├── base.py         # NoteStore contract
@@ -200,6 +201,12 @@ Chinese and English, so a cue in one language finds notes written in the other. 
 | `NOTEBASE_EMBEDDER` | `qwen3-0.6b` | preset (`qwen3-0.6b`, `bge-m3`, `minilm-multilingual`), `hashing` (offline stub), or any sentence-transformers model id |
 | `NOTEBASE_EMBED_DIM` | model native | truncate Matryoshka models, e.g. `256` for Qwen3 |
 | `NOTEBASE_SIMILARITY_FLOOR` | `0.3` | only for custom model ids: the cosine an unrelated pair typically gets |
+| `NOTEBASE_LLM` | `anthropic` | `anthropic`: LLM Atomizer + Enricher on Claude; `none`: stubs only, fully offline |
+| `NOTEBASE_LLM_MODEL` | `claude-haiku-5-5` | model for both LLM boxes |
+| `NOTEBASE_ATOMIZER_MODEL` / `NOTEBASE_ENRICHER_MODEL` | (unset) | per-box override, e.g. atomize with Sonnet, enrich with Haiku |
+| `ANTHROPIC_API_KEY` (or `CLAUDE_API_KEY`) | (unset) | Claude API key from the [Claude Console](https://platform.claude.com/) |
+
+Without a working API key, writes still succeed: the LLM boxes log a warning and fall back to their stubs.
 
 A database remembers which model wrote its vectors and refuses to run with a different one, because vectors from
 different models can't be compared.
@@ -224,7 +231,7 @@ integration tests and the real-model tests.
 - [x] **v0: Skeleton**: full write/find pipelines on MongoDB, with every algorithm as a stubbed black box
 - [ ] **v0.x: Fill the black boxes**
   - [x] Real embedding model (Qwen3-Embedding-0.6B, local)
-  - [ ] LLM Atomizer / Contextualizer / Enricher
+  - [x] LLM Atomizer + Enricher (Claude Haiku 5.5; see [docs/llm.md](docs/llm.md))
   - [ ] Better Linker, Spreader, Clusterer, Labeler
 - [ ] **v1: Graph view**
   - [ ] Web UI with a single input that switches between write and find

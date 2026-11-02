@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 
-from notebase.blackbox import Embedder, stubs
+from notebase.blackbox import Atomizer, Embedder, Enricher, stubs
 from notebase.find import FindPipeline
 from notebase.models import FindResult, WriteResult
 from notebase.storage.base import NoteStore
@@ -29,6 +29,18 @@ class Config:
     embedder: str | None = field(default_factory=lambda: os.environ.get("NOTEBASE_EMBEDDER"))
     # optional: truncate Matryoshka models (e.g. Qwen3 1024 -> 256) / size of hashing stub
     embedding_dim: int | None = field(default_factory=lambda: _env_int("NOTEBASE_EMBED_DIM"))
+    # "anthropic" (default): LLM Atomizer + Enricher on Claude; "none": stubs only
+    llm: str = field(default_factory=lambda: os.environ.get("NOTEBASE_LLM", "anthropic"))
+    llm_model: str = field(
+        default_factory=lambda: os.environ.get("NOTEBASE_LLM_MODEL", "claude-haiku-5-5")
+    )
+    # per-box overrides, e.g. atomize with a stronger model, enrich with Haiku
+    atomizer_model: str | None = field(
+        default_factory=lambda: os.environ.get("NOTEBASE_ATOMIZER_MODEL")
+    )
+    enricher_model: str | None = field(
+        default_factory=lambda: os.environ.get("NOTEBASE_ENRICHER_MODEL")
+    )
 
 
 class Notebase:
@@ -46,16 +58,22 @@ class Notebase:
 
     # ------------------------------------------------------------------ build
     @classmethod
-    def create(cls, store: NoteStore, embedder: Embedder) -> "Notebase":
-        """Real embedder + placeholder black boxes for everything else."""
+    def create(
+        cls,
+        store: NoteStore,
+        embedder: Embedder,
+        atomizer: Atomizer | None = None,
+        enricher: Enricher | None = None,
+    ) -> "Notebase":
+        """Wire the pipelines; any box not given falls back to its stub."""
         store.bind_embedding(embedder.name, embedder.dim)
         floor = embedder.similarity_floor
         return cls(
             WritePipeline(
                 store=store,
-                atomizer=stubs.ParagraphAtomizer(),
+                atomizer=atomizer or stubs.ParagraphAtomizer(),
                 contextualizer=stubs.IdentityContextualizer(),
-                enricher=stubs.FrequencyEnricher(),
+                enricher=enricher or stubs.FrequencyEnricher(),
                 embedder=embedder,
                 linker=stubs.NearestNeighborLinker(similarity_floor=floor),
             ),
@@ -84,4 +102,18 @@ class Notebase:
         store = MongoNoteStore(config.mongo_uri, config.database, embedder.dim)
         store.bind_embedding(embedder.name, embedder.dim)
         store.ensure_indexes()
-        return cls.create(store, embedder)
+
+        atomizer = enricher = None
+        if config.llm == "anthropic":
+            from notebase.blackbox.llm import LLMAtomizer, LLMEnricher, build_client
+
+            client = build_client()
+            atomizer = LLMAtomizer(client, model=config.atomizer_model or config.llm_model)
+            enricher = LLMEnricher(
+                client,
+                model=config.enricher_model or config.llm_model,
+                tag_vocabulary=store.top_tags,
+            )
+        elif config.llm != "none":
+            raise ValueError(f"NOTEBASE_LLM must be 'anthropic' or 'none', not {config.llm!r}")
+        return cls.create(store, embedder, atomizer=atomizer, enricher=enricher)

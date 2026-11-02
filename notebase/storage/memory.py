@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections import Counter
 from typing import Iterable
 
 from notebase.models import Capture, Link, Note, ScoredNote
@@ -71,6 +72,10 @@ class InMemoryNoteStore:
 
     def count(self) -> int:
         return len(self.notes)
+
+    def top_tags(self, limit: int = 200) -> list[str]:
+        counts = Counter(t for n in self.notes.values() for t in n.tags)
+        return [t for t, _ in counts.most_common(limit)]
 
 
 def _upsert_link(note: Note, link: Link) -> None:

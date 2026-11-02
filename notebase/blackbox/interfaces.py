@@ -31,9 +31,13 @@ class Contextualizer(Protocol):
 
 
 class Enricher(Protocol):
-    """Produce keywords, tags and entities for an atomic note."""
+    """Produce keywords, tags and entities for atomic notes.
 
-    def enrich(self, content: str) -> Enrichment: ...
+    Takes all notes of one capture at once (one LLM call, consistent tags
+    across siblings). Must return exactly one Enrichment per input, in order.
+    """
+
+    def enrich(self, contents: list[str]) -> list[Enrichment]: ...
 
 
 class Embedder(Protocol):

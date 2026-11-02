@@ -184,6 +184,15 @@ class MongoNoteStore:
     def count(self) -> int:
         return self.notes.count_documents({})
 
+    def top_tags(self, limit: int = 200) -> list[str]:
+        pipeline = [
+            {"$unwind": "$tags"},
+            {"$group": {"_id": "$tags", "n": {"$sum": 1}}},
+            {"$sort": {"n": -1, "_id": 1}},
+            {"$limit": limit},
+        ]
+        return [d["_id"] for d in self.notes.aggregate(pipeline)]
+
 
 # ------------------------------------------------------------------ mapping
 

@@ -28,13 +28,12 @@ class WritePipeline:
             self.contextualizer.contextualize(fragment, capture)
             for fragment in self.atomizer.atomize(capture)
         ]
-        # 5. embed (one batch per capture)
+        # 4. enrich  5. embed (one batch per capture each)
+        enrichments = self.enricher.enrich(contents)
         embeddings = self.embedder.embed_documents(contents)
 
         notes: list[Note] = []
-        for content, embedding in zip(contents, embeddings):
-            # 4. enrich
-            enrichment = self.enricher.enrich(content)
+        for content, enrichment, embedding in zip(contents, enrichments, embeddings):
             note = Note(
                 content=content,
                 capture_id=capture.id,
