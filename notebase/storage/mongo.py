@@ -5,6 +5,7 @@ Collections
 ``captures``  raw input, verbatim (provenance)
 ``notes``     atomic notes; each document holds its ``embedding`` (vector) and
               its ``links`` (outgoing associative edges, mirrored on the target)
+``meta``      ``{_id: "embedding", name, dim}``: which model wrote the vectors
 
 Indexes
 -------
@@ -26,6 +27,7 @@ from pymongo.collection import Collection
 from pymongo.operations import SearchIndexModel
 
 from notebase.models import Capture, Entity, Link, Note, ScoredNote
+from notebase.storage.base import EmbeddingMismatch
 
 VECTOR_INDEX = "note_embedding"
 
@@ -42,16 +44,41 @@ class MongoNoteStore:
         self.db = self.client[database]
         self.captures: Collection = self.db["captures"]
         self.notes: Collection = self.db["notes"]
+        self.meta: Collection = self.db["meta"]
         self.embedding_dim = embedding_dim
 
     # ------------------------------------------------------------------ setup
+    def bind_embedding(self, name: str, dim: int) -> None:
+        recorded = self.meta.find_one({"_id": "embedding"})
+        if recorded is None:
+            if self.notes.estimated_document_count():
+                raise EmbeddingMismatch(
+                    f"database {self.db.name!r} has notes but no recorded embedding model; "
+                    "use a fresh NOTEBASE_DB"
+                )
+            self.meta.insert_one({"_id": "embedding", "name": name, "dim": dim})
+        elif (recorded["name"], recorded["dim"]) != (name, dim):
+            raise EmbeddingMismatch(
+                f"database {self.db.name!r} holds vectors from {recorded['name']} "
+                f"({recorded['dim']}-d), not {name} ({dim}-d). Vectors from different "
+                "models are not comparable: use another NOTEBASE_DB or re-embed."
+            )
+        self.embedding_dim = dim
+
     def ensure_indexes(self, wait: bool = True, timeout_s: float = 120) -> None:
         self.notes.create_index([("content", TEXT), ("keywords", TEXT)], name="note_text")
         self.notes.create_index([("capture_id", ASCENDING)])
         self.notes.create_index([("links.to", ASCENDING)])
 
         existing = {ix["name"]: ix for ix in self.notes.list_search_indexes()}
-        if VECTOR_INDEX not in existing:
+        if VECTOR_INDEX in existing:
+            fields = existing[VECTOR_INDEX].get("latestDefinition", {}).get("fields", [])
+            dims = {f.get("numDimensions") for f in fields if f.get("type") == "vector"}
+            if dims and dims != {self.embedding_dim}:
+                raise EmbeddingMismatch(
+                    f"vector index is {dims.pop()}-d but the embedder is {self.embedding_dim}-d"
+                )
+        else:
             self.notes.create_search_index(
                 SearchIndexModel(
                     name=VECTOR_INDEX,

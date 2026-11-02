@@ -37,11 +37,32 @@ class Enricher(Protocol):
 
 
 class Embedder(Protocol):
-    """Map text into the vector space used for semantic search."""
+    """Map text into the vector space used for semantic search.
 
+    Notes and queries are embedded separately because retrieval models are
+    often asymmetric (a short cue vs. a full note).
+
+    ``similarity_floor`` is the cosine similarity an *unrelated* pair typically
+    gets with this model. Each model has its own noise level (hashing ~0,
+    Qwen3 ~0.3, e5 ~0.75). Downstream boxes rescale with
+    ``calibrate(cos, floor)`` so their thresholds work for any model.
+
+    ``name`` identifies the vector space. Vectors from different names must
+    never be mixed in one store.
+    """
+
+    name: str
     dim: int
+    similarity_floor: float
 
-    def embed(self, text: str) -> list[float]: ...
+    def embed_documents(self, texts: list[str]) -> list[list[float]]: ...
+
+    def embed_query(self, text: str) -> list[float]: ...
+
+
+def calibrate(cosine: float, floor: float) -> float:
+    """Map raw cosine to a model-independent association strength in [0, 1]."""
+    return max(0.0, min(1.0, (cosine - floor) / (1.0 - floor)))
 
 
 class Linker(Protocol):

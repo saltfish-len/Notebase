@@ -12,6 +12,7 @@ import math
 import re
 from collections import Counter, defaultdict
 
+from notebase.blackbox.interfaces import calibrate
 from notebase.models import Capture, Enrichment, Entity, Link, Note, Query, ScoredNote
 from notebase.storage.base import NoteStore
 from notebase.text import tokenize
@@ -55,12 +56,24 @@ class FrequencyEnricher:
 
 
 class HashingEmbedder:
-    """STUB: bag-of-words hashing trick. Captures word overlap, not meaning."""
+    """STUB: bag-of-words hashing trick. Captures word overlap, not meaning.
+
+    Kept for tests and offline use; the real one is in ``embedders.py``.
+    """
+
+    similarity_floor = 0.0
 
     def __init__(self, dim: int = 256) -> None:
         self.dim = dim
+        self.name = f"hashing-v1:{dim}"
 
-    def embed(self, text: str) -> list[float]:
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return [self._embed(t) for t in texts]
+
+    def embed_query(self, text: str) -> list[float]:
+        return self._embed(text)
+
+    def _embed(self, text: str) -> list[float]:
         vec = [0.0] * self.dim
         for tok in tokenize(text):
             h = int.from_bytes(hashlib.blake2b(tok.encode(), digest_size=8).digest(), "big")
@@ -70,11 +83,16 @@ class HashingEmbedder:
 
 
 class NearestNeighborLinker:
-    """STUB: link to the top-k most similar existing notes above a threshold."""
+    """STUB: link to the top-k most similar notes above a threshold.
 
-    def __init__(self, k: int = 5, min_weight: float = 0.2) -> None:
+    Link weight is the *calibrated* similarity (see ``calibrate``), so
+    ``min_weight`` means the same thing whatever embedding model is in use.
+    """
+
+    def __init__(self, k: int = 5, min_weight: float = 0.2, similarity_floor: float = 0.0) -> None:
         self.k = k
         self.min_weight = min_weight
+        self.similarity_floor = similarity_floor
 
     def link(self, note: Note, store: NoteStore, siblings: list[Note]) -> list[Link]:
         sibling_ids = [s.id for s in siblings]
@@ -84,6 +102,7 @@ class NearestNeighborLinker:
         }
         for s in siblings:
             scores[s.id] = _cosine(note.embedding, s.embedding)
+        scores = {i: calibrate(c, self.similarity_floor) for i, c in scores.items()}
         best = sorted(scores, key=scores.get, reverse=True)[: self.k]
         return [
             Link(to=i, weight=round(scores[i], 4), reason="semantic")
@@ -114,7 +133,7 @@ class SimpleQueryInterpreter:
         return Query(
             text=text,
             keywords=tokenize(clean),
-            embedding=self.embedder.embed(clean),
+            embedding=self.embedder.embed_query(clean),
             tags=tags,
         )
 
@@ -122,16 +141,19 @@ class SimpleQueryInterpreter:
 class RRFRetriever:
     """STUB-ish: reciprocal-rank fusion of vector search and keyword search."""
 
-    def __init__(self, rrf_k: int = 60, min_vector_score: float = 0.05) -> None:
+    def __init__(
+        self, rrf_k: int = 60, min_vector_score: float = 0.05, similarity_floor: float = 0.0
+    ) -> None:
         self.rrf_k = rrf_k
-        self.min_vector_score = min_vector_score
+        self.min_vector_score = min_vector_score  # on the calibrated scale
+        self.similarity_floor = similarity_floor
 
     def retrieve(self, query: Query, store: NoteStore, k: int) -> list[ScoredNote]:
         pool = k * 3
         vector = [
             s
             for s in store.vector_search(query.embedding, pool, tags=query.tags)
-            if s.score >= self.min_vector_score
+            if calibrate(s.score, self.similarity_floor) >= self.min_vector_score
         ]
         keyword = store.keyword_search(query.keywords, pool, tags=query.tags)
 

@@ -5,11 +5,16 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 
-from notebase.blackbox import stubs
+from notebase.blackbox import Embedder, stubs
 from notebase.find import FindPipeline
 from notebase.models import FindResult, WriteResult
 from notebase.storage.base import NoteStore
 from notebase.write import WritePipeline
+
+
+def _env_int(name: str) -> int | None:
+    value = os.environ.get(name)
+    return int(value) if value else None
 
 
 @dataclass
@@ -20,9 +25,10 @@ class Config:
         )
     )
     database: str = field(default_factory=lambda: os.environ.get("NOTEBASE_DB", "notebase"))
-    embedding_dim: int = field(
-        default_factory=lambda: int(os.environ.get("NOTEBASE_EMBED_DIM", "256"))
-    )
+    # preset name (qwen3-0.6b | bge-m3 | minilm-multilingual), "hashing", or a HF model id
+    embedder: str | None = field(default_factory=lambda: os.environ.get("NOTEBASE_EMBEDDER"))
+    # optional: truncate Matryoshka models (e.g. Qwen3 1024 -> 256) / size of hashing stub
+    embedding_dim: int | None = field(default_factory=lambda: _env_int("NOTEBASE_EMBED_DIM"))
 
 
 class Notebase:
@@ -40,9 +46,10 @@ class Notebase:
 
     # ------------------------------------------------------------------ build
     @classmethod
-    def with_stubs(cls, store: NoteStore, embedding_dim: int = 256) -> "Notebase":
-        """Build the app with the placeholder black boxes."""
-        embedder = stubs.HashingEmbedder(dim=embedding_dim)
+    def create(cls, store: NoteStore, embedder: Embedder) -> "Notebase":
+        """Real embedder + placeholder black boxes for everything else."""
+        store.bind_embedding(embedder.name, embedder.dim)
+        floor = embedder.similarity_floor
         return cls(
             WritePipeline(
                 store=store,
@@ -50,12 +57,12 @@ class Notebase:
                 contextualizer=stubs.IdentityContextualizer(),
                 enricher=stubs.FrequencyEnricher(),
                 embedder=embedder,
-                linker=stubs.NearestNeighborLinker(),
+                linker=stubs.NearestNeighborLinker(similarity_floor=floor),
             ),
             FindPipeline(
                 store=store,
                 interpreter=stubs.SimpleQueryInterpreter(embedder),
-                retriever=stubs.RRFRetriever(),
+                retriever=stubs.RRFRetriever(similarity_floor=floor),
                 spreader=stubs.DecaySpreader(),
                 clusterer=stubs.ComponentClusterer(),
                 labeler=stubs.TopTagLabeler(),
@@ -63,10 +70,18 @@ class Notebase:
         )
 
     @classmethod
+    def with_stubs(cls, store: NoteStore, embedding_dim: int = 256) -> "Notebase":
+        """Everything stubbed, including the embedder. Fast; for tests."""
+        return cls.create(store, stubs.HashingEmbedder(dim=embedding_dim))
+
+    @classmethod
     def from_config(cls, config: Config | None = None) -> "Notebase":
+        from notebase.blackbox.embedders import build_embedder
         from notebase.storage.mongo import MongoNoteStore
 
         config = config or Config()
-        store = MongoNoteStore(config.mongo_uri, config.database, config.embedding_dim)
+        embedder = build_embedder(config.embedder, config.embedding_dim)
+        store = MongoNoteStore(config.mongo_uri, config.database, embedder.dim)
+        store.bind_embedding(embedder.name, embedder.dim)
         store.ensure_indexes()
-        return cls.with_stubs(store, config.embedding_dim)
+        return cls.create(store, embedder)

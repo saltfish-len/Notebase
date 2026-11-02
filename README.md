@@ -152,6 +152,7 @@ notebase/
 ├── models.py           # Capture, Note, Link, Query, FindResult, ...
 ├── blackbox/
 │   ├── interfaces.py   # the 10 black-box Protocols
+│   ├── embedders.py    # real Embedder (Qwen3 via sentence-transformers)
 │   └── stubs.py        # placeholder implementations
 ├── storage/
 │   ├── base.py         # NoteStore contract
@@ -164,38 +165,57 @@ notebase/
 
 ```bash
 docker compose up -d          # MongoDB with Vector Search (mongodb-atlas-local)
+pip install torch --index-url https://download.pytorch.org/whl/cpu   # CPU-only torch (skip if you have a GPU)
 pip install -e ".[dev]"
 ```
 
 ```bash
 notebase write "Deep sleep consolidates memory in the hippocampus."
 notebase write "Coffee in the afternoon hurts deep sleep."
-notebase find "coffee"
+notebase write "Spaced repetition helps long-term retention."
+notebase find "怎么记得更牢"
 ```
 
 ```
-◆ deep / sleep
-  ★ [1.00] Coffee in the afternoon hurts deep sleep.
-  · [0.24] Deep sleep consolidates memory in the hippocampus.
+◆ ...
+  ★ [1.00] Spaced repetition helps long-term retention.
+  ★ [0.97] Deep sleep consolidates memory in the hippocampus.
+  · [0.21] Coffee in the afternoon hurts deep sleep.
 ```
 
 ★ marks a seed note the query hit directly. · marks a note reached by association. `--json` gives the full
 `FindResult` (nodes, edges, clusters) for a graph UI.
 
-Configuration: `NOTEBASE_MONGO_URI` (default `mongodb://localhost:27017/?directConnection=true`),
-`NOTEBASE_DB` (default `notebase`), `NOTEBASE_EMBED_DIM` (default `256`).
+The first run downloads the embedding model, [Qwen3-Embedding-0.6B](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B)
+(about 1.2 GB). It runs locally on CPU, CUDA or Apple Silicon, so notes never leave your machine. It works across
+Chinese and English, so a cue in one language finds notes written in the other. See
+[docs/embedding.md](docs/embedding.md) for why this model was chosen.
 
-Tests:
+### Configuration
+
+| Variable | Default | |
+|---|---|---|
+| `NOTEBASE_MONGO_URI` | `mongodb://localhost:27017/?directConnection=true` | |
+| `NOTEBASE_DB` | `notebase` | one database = one embedding model |
+| `NOTEBASE_EMBEDDER` | `qwen3-0.6b` | preset (`qwen3-0.6b`, `bge-m3`, `minilm-multilingual`), `hashing` (offline stub), or any sentence-transformers model id |
+| `NOTEBASE_EMBED_DIM` | model native | truncate Matryoshka models, e.g. `256` for Qwen3 |
+| `NOTEBASE_SIMILARITY_FLOOR` | `0.3` | only for custom model ids: the cosine an unrelated pair typically gets |
+
+A database remembers which model wrote its vectors and refuses to run with a different one, because vectors from
+different models can't be compared.
+
+### Tests
 
 ```bash
 pytest
 ```
 
 ```bash
-NOTEBASE_TEST_MONGO_URI="mongodb://localhost:27017/?directConnection=true" pytest
+NOTEBASE_TEST_MONGO_URI="mongodb://localhost:27017/?directConnection=true" NOTEBASE_TEST_MODEL=1 pytest
 ```
 
-The first command runs against the in-memory store only. The second also runs the MongoDB integration test.
+The first command is fast: it uses the in-memory store and the hashing stub. The second also runs the MongoDB
+integration tests and the real-model tests.
 
 ---
 
@@ -203,7 +223,7 @@ The first command runs against the in-memory store only. The second also runs th
 
 - [x] **v0: Skeleton**: full write/find pipelines on MongoDB, with every algorithm as a stubbed black box
 - [ ] **v0.x: Fill the black boxes**
-  - [ ] Real embedding model
+  - [x] Real embedding model (Qwen3-Embedding-0.6B, local)
   - [ ] LLM Atomizer / Contextualizer / Enricher
   - [ ] Better Linker, Spreader, Clusterer, Labeler
 - [ ] **v1: Graph view**

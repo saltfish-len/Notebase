@@ -55,3 +55,12 @@ def test_write_and_find_roundtrip(store):
     result = app.find("coffee")
     assert result.seeds[0] == coffee.id
     assert sleep.id in result.notes
+
+
+def test_mongo_refuses_a_second_embedding_model(store):
+    from notebase.blackbox.stubs import HashingEmbedder
+    from notebase.storage.base import EmbeddingMismatch
+
+    Notebase.create(store, HashingEmbedder(dim=64))
+    with pytest.raises(EmbeddingMismatch, match="hashing-v1:64"):
+        Notebase.create(store, HashingEmbedder(dim=32))

@@ -23,11 +23,16 @@ class WritePipeline:
         capture = Capture(text=text, source=source)
         self.store.save_capture(capture)
 
+        # 2. atomize  3. contextualize
+        contents = [
+            self.contextualizer.contextualize(fragment, capture)
+            for fragment in self.atomizer.atomize(capture)
+        ]
+        # 5. embed (one batch per capture)
+        embeddings = self.embedder.embed_documents(contents)
+
         notes: list[Note] = []
-        # 2. atomize
-        for fragment in self.atomizer.atomize(capture):
-            # 3. contextualize
-            content = self.contextualizer.contextualize(fragment, capture)
+        for content, embedding in zip(contents, embeddings):
             # 4. enrich
             enrichment = self.enricher.enrich(content)
             note = Note(
@@ -37,8 +42,7 @@ class WritePipeline:
                 keywords=enrichment.keywords,
                 tags=enrichment.tags,
                 entities=enrichment.entities,
-                # 5. embed
-                embedding=self.embedder.embed(content),
+                embedding=embedding,
             )
             # 6. link (against the store + earlier notes from this same capture)
             links = self.linker.link(note, self.store, siblings=list(notes))

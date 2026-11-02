@@ -60,3 +60,23 @@ def test_chinese_text(app):
     app.write("意大利面只需要面粉和鸡蛋。")
     result = app.find("记忆")
     assert "海马体" in result.notes[result.seeds[0]].content
+
+
+def test_store_refuses_a_second_embedding_model():
+    from notebase.blackbox.stubs import HashingEmbedder
+    from notebase.storage.base import EmbeddingMismatch
+
+    store = InMemoryNoteStore()
+    Notebase.create(store, HashingEmbedder(dim=128))
+    Notebase.create(store, HashingEmbedder(dim=128))  # same model: fine
+    with pytest.raises(EmbeddingMismatch):
+        Notebase.create(store, HashingEmbedder(dim=64))
+
+
+def test_calibration_makes_thresholds_model_independent():
+    from notebase.blackbox.interfaces import calibrate
+
+    assert calibrate(0.30, floor=0.30) == 0.0  # model's noise level -> no association
+    assert calibrate(1.00, floor=0.30) == 1.0
+    assert calibrate(0.10, floor=0.30) == 0.0  # clipped
+    assert calibrate(0.65, floor=0.30) == pytest.approx(0.5)

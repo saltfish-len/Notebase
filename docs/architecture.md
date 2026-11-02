@@ -3,8 +3,10 @@
 Notebase has two verbs, `write` and `find`. Each one is a fixed pipeline of
 **black boxes**: an interface whose implementation can be swapped without
 touching anything else. Right now every box has a placeholder stub
-(`notebase/blackbox/stubs.py`), so the whole system runs end to end on MongoDB
-before any real algorithm exists.
+(`notebase/blackbox/stubs.py`), so the whole system runs end to end on MongoDB.
+Boxes get replaced by real implementations one at a time. So far the
+**Embedder** is real (`notebase/blackbox/embedders.py`, see
+[embedding.md](embedding.md)).
 
 ## Layers
 
@@ -62,8 +64,8 @@ flowchart LR
 | Atomizer | `Capture -> list[str]` | split on blank lines | LLM splits input into one idea per note |
 | Contextualizer | `(fragment, Capture) -> str` | identity | LLM resolves pronouns and references so the note stands alone |
 | Enricher | `str -> Enrichment` | top-frequency words, `#hashtags` as tags, URLs as entities | LLM keywords + synonyms, tags normalized against existing vocabulary, NER |
-| Embedder | `str -> list[float]` | hashing bag-of-words | embedding model (API or local) |
-| Linker | `(Note, store, siblings) -> list[Link]` | top-k cosine above a threshold | similarity + shared entities + temporal proximity, LLM-judged relations |
+| Embedder | `embed_documents(list[str])`, `embed_query(str)` | ✅ **real**: Qwen3-Embedding-0.6B (local); hashing stub kept for tests | n/a |
+| Linker | `(Note, store, siblings) -> list[Link]` | top-k calibrated similarity above a threshold | similarity + shared entities + temporal proximity, LLM-judged relations |
 
 ## Find
 

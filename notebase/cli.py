@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 from dataclasses import asdict
 
 from notebase.app import Config, Notebase
 from notebase.models import FindResult, WriteResult
+from notebase.storage.base import EmbeddingMismatch
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -25,7 +27,12 @@ def main(argv: list[str] | None = None) -> int:
     f.add_argument("-k", type=int, default=5, help="number of seed notes")
 
     args = parser.parse_args(argv)
-    app = Notebase.from_config(Config())
+    _quiet_model_loading()
+    try:
+        app = Notebase.from_config(Config())
+    except EmbeddingMismatch as e:
+        print(f"notebase: {e}", file=sys.stderr)
+        return 2
 
     if args.verb == "write":
         text = args.text if args.text is not None else sys.stdin.read()
@@ -37,6 +44,17 @@ def main(argv: list[str] | None = None) -> int:
         result = app.find(args.cue, k=args.k)
         _print_find(result, args.json)
     return 0
+
+
+def _quiet_model_loading() -> None:
+    logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
+    try:
+        from transformers.utils import logging as hf_logging
+
+        hf_logging.set_verbosity_error()
+        hf_logging.disable_progress_bar()
+    except ImportError:
+        pass
 
 
 def _print_write(result: WriteResult, as_json: bool) -> None:

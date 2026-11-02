@@ -7,7 +7,16 @@ from typing import Iterable, Protocol
 from notebase.models import Capture, Link, Note, ScoredNote
 
 
+class EmbeddingMismatch(RuntimeError):
+    """The store holds vectors from a different embedding model."""
+
+
 class NoteStore(Protocol):
+    def bind_embedding(self, name: str, dim: int) -> None:
+        """Pin the store to one embedding space; raise EmbeddingMismatch if it
+        already holds vectors from another model (they are not comparable)."""
+        ...
+
     # -- write side ------------------------------------------------------------
     def save_capture(self, capture: Capture) -> None: ...
 

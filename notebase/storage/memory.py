@@ -6,6 +6,7 @@ import math
 from typing import Iterable
 
 from notebase.models import Capture, Link, Note, ScoredNote
+from notebase.storage.base import EmbeddingMismatch
 from notebase.text import tokenize
 
 
@@ -20,6 +21,12 @@ class InMemoryNoteStore:
     def __init__(self) -> None:
         self.captures: dict[str, Capture] = {}
         self.notes: dict[str, Note] = {}
+        self.embedding: tuple[str, int] | None = None
+
+    def bind_embedding(self, name: str, dim: int) -> None:
+        if self.embedding not in (None, (name, dim)):
+            raise EmbeddingMismatch(f"store uses {self.embedding[0]}, not {name}")
+        self.embedding = (name, dim)
 
     def save_capture(self, capture: Capture) -> None:
         self.captures[capture.id] = capture
