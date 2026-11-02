@@ -1,0 +1,18 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  fast:
+    # In-memory store, hashing embedder, fake LLM client: no MongoDB, model download or API key.
+    # MongoDB and real-model tests are skipped here; run them locally (see CLAUDE.md).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pymongo anthropic numpy pytest
+      - run: python -m pytest -q
