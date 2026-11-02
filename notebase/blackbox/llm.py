@@ -36,9 +36,13 @@ spread one idea across notes.
 - Each note must make sense on its own when read months later without the rest of \
 the capture. Resolve pronouns and vague references ("it", "that meeting", "he") \
 using the capture. If the capture doesn't say what they refer to, leave them as \
-written; never invent context.
+written; never invent context. When a sentence reports what a source says \
+("it says", "he argues", "according to her"), name that source in the note; \
+never drop the attribution.
 - Keep the user's words, voice and language. Don't translate, summarize away \
-details, add facts, or comment on the content. Keep names, numbers, URLs and \
+details, add facts, or comment on the content. Captures often mix Chinese and \
+English: keep each part in the language the user wrote it in, even when the \
+rest of the capture is in another language. Keep names, numbers, URLs and \
 #hashtags exactly as written.
 - Light cleanup only: drop filler words and fix obvious typos.
 - Keep the ideas in the order they appear."""
@@ -96,14 +100,19 @@ You index atomic notes from a personal note-taking app so that the user can find
 them later by association. Notes may be in any language, often Chinese or English.
 
 For each note return:
-- keywords: 5-10 words or short phrases the user might type later when trying to \
-recall this note. Include the key terms it contains, plus synonyms, broader \
-concepts and closely related terms it doesn't contain. If the note is in Chinese, \
-add English equivalents of the main terms; if it is in English, add Chinese ones.
+- keywords: 5-10 words or short phrases in total that the user might type later \
+when trying to recall this note. Include the key terms it contains, plus synonyms, \
+broader concepts and closely related terms it doesn't contain. The user searches \
+in both Chinese and English, so always include at least two keywords in the other \
+language: for an English note, Simplified Chinese translations of its main terms; \
+for a Chinese note, English ones.
 - tags: 1-3 broad topics, lowercase, one or two words each (for example "sleep", \
 "cooking", "work"). Tags group notes into areas, so they are broader than keywords. \
-Reuse a tag from <existing_tags> whenever one fits; create a new tag only when none \
-does. Write tags in the language the existing tags use, or English if there are none.
+Reuse a tag from <existing_tags> when the note is really about that topic; don't \
+stretch an existing tag to cover a note on a different topic just because the \
+note is something to remember. Create a new tag when no existing tag describes \
+the note's topic. Never use catch-all tags such as "other", "misc" \
+or "general". Write tags in the language the existing tags use, or English if there are none.
 - entities: specific named things the note mentions: people, places, organizations, \
 projects, works (books, papers, films), events and URLs. Generic concepts are not \
 entities. Use an empty list if there are none.

@@ -35,11 +35,11 @@ If the Docker daemon dies mid-session, MongoDB goes with it: restart both.
 ## Tests
 
 ```bash
-pytest
+python -m pytest   # `pytest` on PATH may be a separate tool env that cannot import notebase
 ```
 
 ```bash
-NOTEBASE_TEST_MONGO_URI="mongodb://localhost:27017/?directConnection=true" NOTEBASE_TEST_MODEL=1 pytest
+NOTEBASE_TEST_MONGO_URI="mongodb://localhost:27017/?directConnection=true" NOTEBASE_TEST_MODEL=1 python -m pytest
 ```
 
 The first command is fast (about 0.1 s), runs offline, and is what CI runs. The second adds the

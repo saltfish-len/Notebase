@@ -234,7 +234,7 @@ Open work is tracked in [GitHub issues](https://github.com/saltfish-len/Notebase
 - [ ] **v0.x: Fill the black boxes**
   - [x] Real embedding model (Qwen3-Embedding-0.6B, local)
   - [x] LLM Atomizer + Enricher (Claude Haiku 5.5; see [docs/llm.md](docs/llm.md))
-  - [ ] Measure Haiku vs Sonnet for the LLM boxes ([#1](https://github.com/saltfish-len/Notebase/issues/1))
+  - [x] Measure Haiku vs Sonnet for the LLM boxes: Haiku is enough after prompt fixes ([#1](https://github.com/saltfish-len/Notebase/issues/1))
   - [ ] Find-side boxes: Labeler, Clusterer, Spreader, QueryInterpreter ([#4](https://github.com/saltfish-len/Notebase/issues/4))
   - [ ] Chinese keyword search, vector index lag ([#6](https://github.com/saltfish-len/Notebase/issues/6))
   - [ ] Re-embed when switching embedding models ([#5](https://github.com/saltfish-len/Notebase/issues/5))

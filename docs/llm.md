@@ -10,34 +10,105 @@ The default model is **Claude Haiku 5.5** (`claude-haiku-5-5`).
 
 ## Is Haiku enough?
 
-**Probably yes, and it is the default. But this has not been measured yet:
-run `scripts/eval_llm.py` with an API key to settle it.**
+**Yes, for both boxes, at the current efforts (Atomizer `medium`, Enricher
+`low`). Measured on 2026-11-02 ([#1](https://github.com/saltfish-len/Notebase/issues/1))
+with `scripts/eval_llm.py`, and checked end to end with MongoDB and the real
+embedder.** The original prompt was *not* good enough on Haiku. Four prompt
+changes fixed it (below), and they are part of the default.
 
-The case for Haiku:
+| | Haiku 5.5, original prompt | Sonnet 5.5, original prompt | **Haiku 5.5, final prompt** | Haiku 5.5, final prompt, Atomizer `high` | Sonnet 5.5, final prompt |
+|---|---|---|---|---|---|
+| Cases passing all checks | 1/8 | 8/8 | **10/10, 9/10, 9/10** (3 runs) | 10/10, 9/10, 9/10 (3 runs) | 10/10 |
+| Fallbacks to the stub | 0 | 0 | **0** | 0 | 0 |
+| Latency per call, p50 / p90 | 2.1 s / n/a | 2.4 s / n/a | **1.5 s / 2.3 s** | 2.1 s / 3.6 s | 2.2 s / 3.1 s |
+| Tokens per write, in / out (both calls) | 1801 / 348 | 1819 / 350 | **1980 / 325** | 1980 / 610 | 1988 / 317 |
+| Cost per 1000 writes | $0.35 | $7.14 | **$0.36** | $0.50 | $7.14 |
 
-* Both tasks are **bounded extraction and rewriting over short input**, not
-  open-ended reasoning, and that is Haiku's intended workload. Structured
-  outputs guarantee the JSON shape whatever model is used, so a smaller model
-  can't break the format.
-* It is roughly 20× cheaper than Sonnet 5.5 ($0.10/$0.50 vs $2/$10 per million
-  tokens) and faster, and *write* sits on the user's critical path.
-* Back-of-envelope estimate (not measured): a typical write is about 2–3K input
-  and 1–2K output tokens across the two calls. That is about **$1 per 1000
-  writes on Haiku** versus about $20 on Sonnet.
+The original-prompt columns use the 8 original cases, scored with the
+corrected checks (see "Fixes to the eval"). Output tokens include thinking. A
+write makes two calls, one after the other, so a Haiku write spends about
+3 s in the LLM.
 
-Where Haiku is most likely to fall short, and what the eval checks:
+The cost is about 20× lower than Sonnet, which matches the price ratio. The
+back-of-envelope estimate of about $1 per 1000 writes was too high. Real
+writes are longer than the eval captures, and the prompt carries up to 200
+existing tags instead of about 10. **Not measured:** a large tag vocabulary
+adds roughly 500–1000 input tokens, which is about $0.05–0.10 more per 1000
+writes on Haiku.
 
-| Risk | Why | Eval case |
-|---|---|---|
-| Over- or under-splitting long brain dumps | Deciding what counts as "one idea" is a judgment call | `brain-dump-en`, `brain-dump-zh`, `one-idea-many-sentences` |
-| Missing a reference ("he", "it") | Making a note self-contained needs the whole capture in view | `references` |
-| Tag vocabulary fragmenting (`sleep` / `sleep-science` / `睡眠`) | Reusing tags needs consistency across calls | tag vocabulary printed at the end |
-| Dropping facts while "cleaning up" | Rewriting can lose details | `facts_kept` on every case |
+### What reading the outputs showed
 
-If Haiku fails specifically on atomization, the cheap fix is to upgrade only
-that box: `NOTEBASE_ATOMIZER_MODEL=claude-sonnet-5-5` and keep Haiku for
-enrichment. Raising the Atomizer's effort to `high` on Haiku is a cheaper
-first step to try.
+The automatic checks catch only obvious failures. These findings come from
+reading the outputs side by side.
+
+* **Atomizer: Haiku matched Sonnet from the start.** Both models made the
+  same splits on every original case and kept every fact. Haiku's one miss
+  was `"It also says caffeine…"`, which became `"Caffeine has…"`: the
+  attribution to the book was dropped.
+* **Enricher: Haiku had two real problems with the original prompt.**
+  1. It never added Chinese keywords to English notes. It did add English
+     keywords to Chinese notes, and once a Spanish "cafeina".
+  2. It stretched existing tags. With `sleep, memory` in the vocabulary,
+     every note in `brain-dump-en` was tagged `memory`, including the flight
+     booking and the onboarding-UX notes.
+* **End to end, Haiku translated a sentence.** In a mixed zh/en capture,
+  `"Also need to renew my passport…"` became `"需要在十二月的东京之行前更新护照。"`.
+  It did this 3 out of 3 times before the fix. The same run tagged a
+  note-taking idea `documents`, a tag the passport note had just created.
+
+### Prompt changes (all in `notebase/blackbox/llm.py`)
+
+1. Atomizer: name the source when a sentence reports what a source says, and
+   never drop the attribution.
+2. Atomizer: captures often mix Chinese and English, so keep each part in the
+   language the user wrote it in. An earlier wording, "the language its source
+   *sentence* was written in", led to one sentence-by-sentence over-split, so
+   it was rephrased.
+3. Enricher: 5–10 keywords *in total*, always including at least two in the
+   other language (Simplified Chinese for English notes, English for Chinese
+   notes).
+4. Enricher: reuse a tag only when the note is really about that topic, and
+   never use catch-all tags (`other`, `misc`, `general`). One run produced
+   `other`.
+
+### What is still imperfect (accepted)
+
+* **Translation still happens occasionally:** 1 of 9 runs on `mixed-dump`
+  after the fix, against 3 of 3 before. Facts are kept and *find* still
+  works, because the embedder is cross-lingual. Raising the Atomizer to
+  `high` did not help (1 of 3), cost 40% more and added 0.6 s per call.
+  Sonnet kept the language in 3 of 3 runs. If this matters to you, set
+  `NOTEBASE_ATOMIZER_MODEL=claude-sonnet-5-5` and keep Haiku for enrichment.
+  That costs roughly $3–4 per 1000 writes (estimated from the totals above;
+  the cost per box was not measured).
+* **Tags drift between neighbouring topics.** Notes on memory or learning
+  land in `learning`, `productivity` or `neuroscience` depending on the run.
+  Sonnet does the same with other pairs (`cooking` + `baking`, `design` for
+  the Mind Map Book). In a real store the vocabulary is sorted by frequency,
+  so the dominant tag should win over time. **Not measured.**
+* **Haiku sometimes adds entities that are implied but not written**
+  (Kahneman for *Thinking, Fast and Slow*, Tony Buzan for *The Mind Map
+  Book*), and occasionally returns 11–14 keywords instead of at most 10.
+  Both are harmless for *find*.
+
+### Fixes to the eval (the checks were wrong, not the outputs)
+
+* `refs_resolved` required `caffeine|coffee` to appear in at least 2 notes.
+  Caffeine is a single idea, so the check failed Sonnet's correct output and
+  missed Haiku's dropped attribution. It now checks pairs: *the note
+  containing X must also name Y*.
+* `url` required exactly 1 note. Both models split off the "read the part
+  about numCandidates" task, which the prompt itself asks for (tasks are
+  separate notes). It now accepts 1–2.
+* `fallbacks` counted only failed API calls. It now counts every time a box
+  actually used its stub, including validation failures such as a missing
+  note index.
+* New checks: `tags_vary` (a brain dump of unrelated ideas must not get one
+  identical tag set) and `no_catchall_tags`.
+* New cases: `mixed-dump` (each part keeps its language) and
+  `bilingual-followup`. That second case was first written to expect 1 note,
+  but every model split off the Chinese reason sentence, and the split is
+  defensible, so it now accepts 1–2.
 
 ### Running the eval
 
@@ -50,13 +121,16 @@ python scripts/eval_llm.py         # Haiku 5.5 vs Sonnet 5.5
 python scripts/eval_llm.py --models claude-haiku-5-5 claude-opus-5-5
 ```
 
-The eval runs 8 captures (English, Chinese, mixed, brain dumps, references,
-URLs, hashtags) through both boxes. For each model it prints which automatic
+The eval runs 10 captures (English, Chinese, mixed, brain dumps, references,
+URLs, hashtags) through both boxes. `--atomizer-effort high` tries a different
+Atomizer effort, and `--tag=-run2` keeps the output files of repeated runs
+apart; results vary from run to run, so run it more than once before
+deciding. For each model it prints which automatic
 checks fail, how many calls fell back to the stub, the resulting tag
 vocabulary, latency, tokens and cost. Full outputs are saved to
 `eval-out/<model>.json` for side-by-side reading. Automatic checks only catch
 the obvious failures, so read the notes themselves before deciding. Running it
-costs a few cents.
+costs well under a cent on Haiku and about 7 cents on Sonnet.
 
 ## Design notes
 
