@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "notebase"
+version = "0.0.1"
+description = "A note-taking app with two verbs: write and find."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["pymongo>=4.7"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+notebase = "notebase.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["notebase*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["mongo: needs a running MongoDB with Vector Search (set NOTEBASE_TEST_MONGO_URI)"]

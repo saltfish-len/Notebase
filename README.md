@@ -116,35 +116,96 @@ If a feature isn't *write* or *find*, it probably doesn't belong.
 
 ---
 
-## Architecture (proposed)
+## Architecture
+
+Python + **MongoDB** (notes, vectors via Atlas Vector Search `$vectorSearch`, and graph edges in one database).
+Every core algorithm is a **black box**: an interface that currently has a naive placeholder stub, so the
+whole system runs end to end while the real algorithms are built one box at a time.
 
 ```
-┌──────────────┐        ┌───────────────────────────────┐        ┌──────────────────────┐
-│   Client     │        │           Core                │        │       Storage        │
-│              │ write  │  Write pipeline               │        │                      │
-│  input box ──┼───────►│  (LLM: atomize / enrich)      ├───────►│  notes  (SQL)        │
-│              │        │  embedding model              │        │  vectors (ANN index) │
-│  graph view ◄┼────────┤  Find pipeline                │◄───────┤  edges  (graph)      │
-│              │  find  │  (hybrid search / spread /    │        │  raw captures        │
-└──────────────┘        │   cluster / label)            │        └──────────────────────┘
-                        └───────────────────────────────┘
+                write                                              find
+                  │                                                  │
+   ┌──────────────▼──────────────┐                   ┌───────────────▼──────────────┐
+   │ WritePipeline               │                   │ FindPipeline                 │
+   │  [Atomizer]                 │                   │  [QueryInterpreter]          │
+   │  [Contextualizer]           │                   │  [Retriever]   ◄── $vectorSearch + $text
+   │  [Enricher]                 │                   │  [Spreader]    ◄── notes.links
+   │  [Embedder]                 │                   │  [Clusterer]                 │
+   │  [Linker]  ◄── $vectorSearch│                   │  [Labeler]                   │
+   └──────────────┬──────────────┘                   └───────────────┬──────────────┘
+                  │                                                  │
+                  ▼                                                  ▼
+        ┌──────────────────── NoteStore ────────────────────┐   FindResult
+        │ MongoDB: captures · notes{embedding, links}       │   (seeds, notes, edges,
+        │ (InMemoryNoteStore for tests)                     │    clusters → graph view)
+        └───────────────────────────────────────────────────┘
 ```
 
-- **LLM layer**: atomizing, contextualizing, keyword and tag extraction, query expansion, cluster labelling. The provider is pluggable, and local models are supported.
-- **Embedding layer**: a pluggable embedding model.
-- **Storage**: local-first by default. A single SQLite file with a vector extension can hold notes, vectors, and edges, so your memory stays on your machine.
-- **Client**: a minimal UI with one input box and one graph canvas.
+See **[docs/architecture.md](docs/architecture.md)** for the diagrams, each black box's contract and
+stub, and the MongoDB data model.
 
-The tech stack is not final. See the roadmap.
+```
+notebase/
+├── app.py              # composition root: Notebase.write / Notebase.find
+├── write.py            # WritePipeline (orchestration only)
+├── find.py             # FindPipeline  (orchestration only)
+├── models.py           # Capture, Note, Link, Query, FindResult, ...
+├── blackbox/
+│   ├── interfaces.py   # the 10 black-box Protocols
+│   └── stubs.py        # placeholder implementations
+├── storage/
+│   ├── base.py         # NoteStore contract
+│   ├── mongo.py        # MongoDB + Vector Search
+│   └── memory.py       # in-memory, for tests
+└── cli.py              # `notebase write` / `notebase find`
+```
+
+## Quickstart
+
+```bash
+docker compose up -d          # MongoDB with Vector Search (mongodb-atlas-local)
+pip install -e ".[dev]"
+```
+
+```bash
+notebase write "Deep sleep consolidates memory in the hippocampus."
+notebase write "Coffee in the afternoon hurts deep sleep."
+notebase find "coffee"
+```
+
+```
+◆ deep / sleep
+  ★ [1.00] Coffee in the afternoon hurts deep sleep.
+  · [0.24] Deep sleep consolidates memory in the hippocampus.
+```
+
+★ marks a seed note the query hit directly. · marks a note reached by association. `--json` gives the full
+`FindResult` (nodes, edges, clusters) for a graph UI.
+
+Configuration: `NOTEBASE_MONGO_URI` (default `mongodb://localhost:27017/?directConnection=true`),
+`NOTEBASE_DB` (default `notebase`), `NOTEBASE_EMBED_DIM` (default `256`).
+
+Tests:
+
+```bash
+pytest
+```
+
+```bash
+NOTEBASE_TEST_MONGO_URI="mongodb://localhost:27017/?directConnection=true" pytest
+```
+
+The first command runs against the in-memory store only. The second also runs the MongoDB integration test.
 
 ---
 
 ## Roadmap
 
-- [ ] **v0: Core loop (CLI)**
-  - [ ] `notebase write "..."` runs the full write pipeline
-  - [ ] `notebase find "..."` returns seed notes and their clustered neighbourhood as text
-  - [ ] Local SQLite + vector storage
+- [x] **v0: Skeleton**: full write/find pipelines on MongoDB, with every algorithm as a stubbed black box
+- [ ] **v0.x: Fill the black boxes**
+  - [ ] Real embedding model
+  - [ ] LLM Atomizer / Contextualizer / Enricher
+  - [ ] Better Linker, Spreader, Clusterer, Labeler
 - [ ] **v1: Graph view**
   - [ ] Web UI with a single input that switches between write and find
   - [ ] Interactive zoomed-in subgraph for find results
