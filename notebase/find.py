@@ -17,15 +17,22 @@ class FindPipeline:
     spreader: Spreader
     clusterer: Clusterer
     labeler: Labeler
+    max_graph_notes: int = 2000  # cap for a whole-graph cue, so one find stays bounded
 
     def find(self, text: str, k: int = 5) -> FindResult:
         # 1. interpret the cue
         query = self.interpreter.interpret(text)
-        # 2. retrieve seed notes (hybrid search)
-        seeds = self.retriever.retrieve(query, self.store, k)
-        # 3. spread activation over the association graph
-        activation = self.spreader.spread(seeds, self.store)
-        notes = self.store.get_notes(activation)
+        if query.whole_graph:
+            # "#all": the whole graph (or the whole tagged part), not a ranked region
+            notes = {n.id: n for n in self.store.list_notes(query.tags, self.max_graph_notes)}
+            seeds, activation = list(notes), dict.fromkeys(notes, 1.0)
+        else:
+            # 2. retrieve seed notes (hybrid search)
+            scored = self.retriever.retrieve(query, self.store, k)
+            seeds = [s.note.id for s in scored]
+            # 3. spread activation over the association graph
+            activation = self.spreader.spread(scored, self.store)
+            notes = self.store.get_notes(activation)
         # 4. cluster the reached region
         groups = self.clusterer.cluster(notes)
         # 5. label clusters
@@ -33,7 +40,7 @@ class FindPipeline:
 
         return FindResult(
             query=query,
-            seeds=[s.note.id for s in seeds],
+            seeds=seeds,
             notes=notes,
             activation=activation,
             edges=_subgraph_edges(notes),

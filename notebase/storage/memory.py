@@ -73,6 +73,12 @@ class InMemoryNoteStore:
         scored.sort(key=lambda s: s.score, reverse=True)
         return scored[:k]
 
+    def list_notes(self, tags=(), limit=1000):
+        wanted = set(tags)
+        notes = [n for n in self.notes.values() if not wanted or wanted & set(n.tags)]
+        notes.sort(key=lambda n: n.created_at, reverse=True)
+        return notes[:limit]
+
     def count(self) -> int:
         return len(self.notes)
 

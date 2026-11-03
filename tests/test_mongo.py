@@ -57,6 +57,18 @@ def test_write_and_find_roundtrip(store):
     assert sleep.id in result.notes
 
 
+def test_mongo_lists_notes_by_tag_newest_first(store):
+    app = Notebase.with_stubs(store, embedding_dim=64)
+    old = app.write("Deep sleep consolidates memory. #sleep").notes[0]
+    new = app.write("Naps help too. #sleep").notes[0]
+    pasta = app.write("Fresh pasta needs flour and eggs. #food").notes[0]
+
+    assert [n.id for n in store.list_notes(["sleep"])] == [new.id, old.id]
+    assert {n.id for n in store.list_notes()} == {old.id, new.id, pasta.id}
+    assert len(store.list_notes(limit=1)) == 1
+    assert store.list_notes(["sleep"])[0].embedding == []  # left out: graph only
+
+
 def test_mongo_refuses_a_second_embedding_model(store):
     from notebase.blackbox.stubs import HashingEmbedder
     from notebase.storage.base import EmbeddingMismatch

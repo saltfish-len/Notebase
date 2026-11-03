@@ -55,6 +55,36 @@ def test_tag_filter(app):
     assert seed_tags and all("neuroscience" in t for t in seed_tags)
 
 
+def test_tag_only_cue_returns_every_tagged_note(app):
+    tagged = app.write(SLEEP).notes[1]
+    app.write(COFFEE)
+    result = app.find("#neuroscience")
+    assert result.seeds == [tagged.id]
+    assert all("neuroscience" in result.notes[s].tags for s in result.seeds)
+
+
+def test_unknown_tag_alone_finds_nothing(app):
+    app.write(SLEEP)
+    assert app.find("#nothing-has-this").notes == {}
+
+
+def test_all_returns_the_whole_graph(app):
+    written = [n for text in (SLEEP, COFFEE, PASTA) for n in app.write(text).notes]
+    result = app.find("#all", k=1)  # k does not cap the whole graph
+    assert set(result.notes) == {n.id for n in written}
+    assert set(result.seeds) == set(result.notes)
+    every_link = {tuple(sorted((n.id, l.to))) for n in written for l in n.links}
+    assert {tuple(sorted((e.source, e.target))) for e in result.edges} == every_link
+    assert sum(len(c.note_ids) for c in result.clusters) == len(written)
+
+
+def test_all_with_a_tag_returns_that_part_of_the_graph(app):
+    tagged = app.write(SLEEP).notes[1]
+    app.write(PASTA)
+    result = app.find("#all #neuroscience")
+    assert set(result.notes) == {tagged.id}
+
+
 def test_chinese_text(app):
     app.write("睡眠可以巩固记忆，海马体在夜间重放白天的经历。")
     app.write("意大利面只需要面粉和鸡蛋。")

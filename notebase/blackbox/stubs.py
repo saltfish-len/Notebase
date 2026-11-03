@@ -13,7 +13,17 @@ import re
 from collections import Counter, defaultdict
 
 from notebase.blackbox.interfaces import calibrate
-from notebase.models import Attachment, Capture, Enrichment, Entity, Link, Note, Query, ScoredNote
+from notebase.models import (
+    WHOLE_GRAPH_TAG,
+    Attachment,
+    Capture,
+    Enrichment,
+    Entity,
+    Link,
+    Note,
+    Query,
+    ScoredNote,
+)
 from notebase.storage.base import NoteStore
 from notebase.text import tokenize
 
@@ -186,14 +196,19 @@ def _cosine(a: list[float], b: list[float]) -> float:
 
 
 class SimpleQueryInterpreter:
-    """STUB: keywords = tokens of the query; no expansion; #tags become filters."""
+    """STUB: keywords = tokens of the query; no expansion; #tags become filters;
+    #all asks for the whole graph."""
 
     def __init__(self, embedder) -> None:
         self.embedder = embedder
 
     def interpret(self, text: str) -> Query:
         tags = [h.lower() for h in _HASHTAG.findall(text)]
+        whole_graph = WHOLE_GRAPH_TAG in tags
+        tags = [t for t in tags if t != WHOLE_GRAPH_TAG]
         clean = _HASHTAG.sub(" ", text)
+        if whole_graph or not clean.strip():  # nothing to rank by: skip the model
+            return Query(text=text, tags=tags, whole_graph=whole_graph)
         return Query(
             text=text,
             keywords=tokenize(clean),
@@ -206,13 +221,23 @@ class RRFRetriever:
     """STUB-ish: reciprocal-rank fusion of vector search and keyword search."""
 
     def __init__(
-        self, rrf_k: int = 60, min_vector_score: float = 0.05, similarity_floor: float = 0.0
+        self,
+        rrf_k: int = 60,
+        min_vector_score: float = 0.05,
+        similarity_floor: float = 0.0,
+        max_tagged: int = 50,
     ) -> None:
         self.rrf_k = rrf_k
         self.min_vector_score = min_vector_score  # on the calibrated scale
         self.similarity_floor = similarity_floor
+        self.max_tagged = max_tagged
 
     def retrieve(self, query: Query, store: NoteStore, k: int) -> list[ScoredNote]:
+        if not query.embedding and not query.keywords:
+            # a cue of tags only: nothing to rank by, so every tagged note is a seed
+            if not query.tags:
+                return []
+            return [ScoredNote(n, 1.0) for n in store.list_notes(query.tags, self.max_tagged)]
         pool = k * 3
         vector = [
             s

@@ -216,6 +216,17 @@ notebase find "怎么记得更牢"
 ★ marks a seed note the query hit directly. · marks a note reached by association. `--json` gives the full
 `FindResult` (nodes, edges, clusters) for a graph UI.
 
+Tags in a cue:
+
+| Cue | Returns |
+|---|---|
+| `"memory #neuroscience"` | the usual ranked region, seeds limited to notes tagged `neuroscience` |
+| `"#neuroscience"` | every note with that tag (up to 50), plus what spreading reaches |
+| `"#all"` | the whole graph: every note and link, unranked (up to 2,000 notes) |
+| `"#all #neuroscience"` | every note with that tag and the links between them, uncapped by `k` |
+
+`all` is reserved for this, so don't use `#all` as a note tag.
+
 ```bash
 notebase write "Sprint plan we agreed on." -a ~/Desktop/whiteboard_sprint_plan.jpg
 ```

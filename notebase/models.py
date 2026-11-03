@@ -143,12 +143,19 @@ class WriteResult:
 # ---------------------------------------------------------------------------- find
 
 
+# Reserved cue tag: "#all" returns the whole graph, "#all #sleep" every note tagged sleep.
+WHOLE_GRAPH_TAG = "all"
+
+
 @dataclass
 class Query:
     text: str
     keywords: list[str] = field(default_factory=list)
     embedding: list[float] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)  # optional metadata filter
+    # the cue asked for the whole graph (WHOLE_GRAPH_TAG): every note, or every note with
+    # ``tags``, instead of a ranked region
+    whole_graph: bool = False
 
 
 @dataclass
