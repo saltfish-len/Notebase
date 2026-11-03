@@ -32,20 +32,31 @@ class FilenameAltTextNormalizer:
     """
 
     def normalize(self, capture: Capture) -> str:
-        text = capture.text.strip()
-        markers = [alt_text_marker(a) for a in capture.attachments]
-        if not markers:
-            return text
-        if not text:
-            return "\n\n".join(markers)
-        return text + "\n" + "\n".join(markers)
+        return place_markers(capture.text, [alt_text_marker(a) for a in capture.attachments])
+
+
+def place_markers(text: str, markers: list[str]) -> str:
+    """Typed text, then one marker per line; markers alone are one paragraph each."""
+    text = text.strip()
+    if not markers:
+        return text
+    if not text:
+        return "\n\n".join(markers)
+    return text + "\n" + "\n".join(markers)
 
 
 _FILENAME_SEPARATORS = re.compile(r"[\s_\-.]+")
 
 
-def alt_text_marker(attachment: Attachment) -> str:
-    """``[kind: description (file name)]``, the description guessed from the name."""
+def alt_text_marker(attachment: Attachment, description: str | None = None) -> str:
+    """``[kind: description (file name)]``.
+
+    Without a ``description``, it is guessed from the file name.
+    """
+    if description:
+        # one line, and no "]" that would end the marker early
+        description = " ".join(description.replace("]", ")").replace("[", "(").split())
+        return f"[{attachment.kind}: {description} ({attachment.name})]"
     stem = attachment.name.rsplit(".", 1)[0] if "." in attachment.name else attachment.name
     words = " ".join(w for w in _FILENAME_SEPARATORS.split(stem) if w)
     if words and words != attachment.name:

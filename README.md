@@ -31,7 +31,7 @@ You type, paste, or dictate anything: a half-formed idea, a meeting dump, a quot
 The system then processes the input:
 
 1. **Capture.** The raw input is stored unchanged, so nothing is ever lost.
-2. **Normalize.** Attached files (images, audio, PDFs) are turned into text, so the steps below work on words. For now this is a naive alt text made from the file name; real image descriptions and transcripts come later.
+2. **Normalize.** Attached files are turned into text, so the steps below work on words. Images get alt text that describes their content, including the important text in them (whiteboards, receipts, screenshots). Other files are described only by their file name for now; transcripts and PDF text come later.
 3. **Atomize.** The input is split into *atomic notes*, each holding one self-contained idea. A long brain-dump might become five notes. A short thought stays as one.
 4. **Contextualize.** Each atomic note is rewritten just enough to be understood on its own, for example by resolving "it" and "that meeting" from the surrounding text, while keeping your voice.
 5. **Enrich.** Each note gets:
@@ -154,8 +154,9 @@ notebase/
 ├── blackbox/
 │   ├── interfaces.py   # the 11 black-box Protocols
 │   ├── embedders.py    # real Embedder (Qwen3 via sentence-transformers)
-│   ├── llm.py          # real Atomizer + Enricher (Claude)
-│   └── stubs.py        # placeholder implementations (incl. the v0 Normalizer)
+│   ├── llm.py          # real Normalizer (image alt text), Atomizer, Enricher (Claude)
+│   ├── images.py       # shrink/convert images for the API (HEIC, TIFF, large photos)
+│   └── stubs.py        # placeholder implementations
 ├── storage/
 │   ├── base.py         # NoteStore contract
 │   ├── mongo.py        # MongoDB + Vector Search
@@ -182,8 +183,11 @@ notebase find "怎么记得更牢"
 notebase write "Sprint plan we agreed on." -a ~/Desktop/whiteboard_sprint_plan.jpg
 ```
 
-`-a` attaches a file (repeat it for several). For now the file is only described by its name, as
-`[image: whiteboard sprint plan (whiteboard_sprint_plan.jpg)]`, and only a reference to it is kept.
+`-a` attaches a file (repeat it for several). An image becomes alt text that describes it, written by
+Claude, for example `[image: Whiteboard with the Q4 roadmap: 1. cut export… (IMG_4471.jpg)]`, so you can find it
+later by what it showed. JPEG, PNG, GIF, WebP, HEIC (iPhone), TIFF and BMP work; large photos are shrunk
+before upload. Other files (audio, PDF, ...) are described only by their file name for now. Only a reference to
+each file is kept, not a copy.
 
 ```
 ◆ ...
@@ -196,7 +200,8 @@ notebase write "Sprint plan we agreed on." -a ~/Desktop/whiteboard_sprint_plan.j
 `FindResult` (nodes, edges, clusters) for a graph UI.
 
 The first run downloads the embedding model, [Qwen3-Embedding-0.6B](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B)
-(about 1.2 GB). It runs locally on CPU, CUDA or Apple Silicon, so notes never leave your machine. It works across
+(about 1.2 GB). It runs locally on CPU, CUDA or Apple Silicon, so embedding never sends notes anywhere. The LLM boxes
+do send text and attached images to the Claude API; set `NOTEBASE_LLM=none` to keep everything on your machine. It works across
 Chinese and English, so a cue in one language finds notes written in the other. See
 [docs/embedding.md](docs/embedding.md) for why this model was chosen.
 
@@ -209,9 +214,9 @@ Chinese and English, so a cue in one language finds notes written in the other. 
 | `NOTEBASE_EMBEDDER` | `qwen3-0.6b` | preset (`qwen3-0.6b`, `bge-m3`, `minilm-multilingual`), `hashing` (offline stub), or any sentence-transformers model id |
 | `NOTEBASE_EMBED_DIM` | model native | truncate Matryoshka models, e.g. `256` for Qwen3 |
 | `NOTEBASE_SIMILARITY_FLOOR` | `0.3` | only for custom model ids: the cosine an unrelated pair typically gets |
-| `NOTEBASE_LLM` | `anthropic` | `anthropic`: LLM Atomizer + Enricher on Claude; `none`: stubs only, fully offline |
+| `NOTEBASE_LLM` | `anthropic` | `anthropic`: Normalizer (image alt text), Atomizer and Enricher on Claude; `none`: stubs only, fully offline |
 | `NOTEBASE_LLM_MODEL` | `claude-haiku-5-5` | model for both LLM boxes |
-| `NOTEBASE_ATOMIZER_MODEL` / `NOTEBASE_ENRICHER_MODEL` | (unset) | per-box override, e.g. atomize with Sonnet, enrich with Haiku |
+| `NOTEBASE_NORMALIZER_MODEL` / `NOTEBASE_ATOMIZER_MODEL` / `NOTEBASE_ENRICHER_MODEL` | (unset) | per-box override, e.g. atomize with Sonnet, enrich with Haiku |
 | `ANTHROPIC_API_KEY` (or `CLAUDE_API_KEY`) | (unset) | Claude API key from the [Claude Console](https://platform.claude.com/) |
 
 Without a working API key, writes still succeed: the LLM boxes log a warning and fall back to their stubs.
@@ -243,8 +248,8 @@ Open work is tracked in [GitHub issues](https://github.com/saltfish-len/Notebase
   - [x] Real embedding model (Qwen3-Embedding-0.6B, local)
   - [x] LLM Atomizer + Enricher (Claude Haiku 5.5; see [docs/llm.md](docs/llm.md))
   - [x] Measure Haiku vs Sonnet for the LLM boxes: Haiku is enough after prompt fixes ([#1](https://github.com/saltfish-len/Notebase/issues/1))
-  - [x] Normalizer v0: attach files to a write; naive alt text from the file name
-  - [ ] Real Normalizer: image descriptions and OCR, audio transcripts, PDF and web-page text; keep file bytes
+  - [x] Normalizer v0: attach files to a write; images get alt text from Claude (Haiku 5.5), other files a file-name marker
+  - [ ] Normalizer: audio transcripts, PDF and web-page text; keep file bytes
   - [ ] Find-side boxes: Labeler, Clusterer, Spreader, QueryInterpreter ([#4](https://github.com/saltfish-len/Notebase/issues/4))
   - [ ] Chinese keyword search, vector index lag ([#6](https://github.com/saltfish-len/Notebase/issues/6))
   - [ ] Re-embed when switching embedding models ([#5](https://github.com/saltfish-len/Notebase/issues/5))

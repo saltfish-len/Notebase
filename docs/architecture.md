@@ -6,9 +6,8 @@ touching anything else. Right now every box has a placeholder stub
 (`notebase/blackbox/stubs.py`), so the whole system runs end to end on MongoDB.
 Boxes get replaced by real implementations one at a time. So far the
 **Embedder** (`notebase/blackbox/embedders.py`, see [embedding.md](embedding.md))
-and the **Atomizer** and **Enricher** (`notebase/blackbox/llm.py`, see
-[llm.md](llm.md)) are real. The **Normalizer** turns attached files into text;
-its v0 is a stub that writes a naive alt text from the file name.
+and the **Normalizer** (images only), **Atomizer** and **Enricher**
+(`notebase/blackbox/llm.py`, see [llm.md](llm.md)) are real.
 
 ## Layers
 
@@ -64,7 +63,7 @@ flowchart LR
 
 | Black box | Contract | Current stub | Intended real version |
 |---|---|---|---|
-| Normalizer | `Capture -> str` (text + attachments → text) | file-name alt text: `whiteboard_plan.jpg` → `[image: whiteboard plan (whiteboard_plan.jpg)]`, on its own line after the typed text; the file is never opened | image alt text and OCR (Claude vision), audio transcripts (local speech-to-text), PDF and web-page text extraction |
+| Normalizer | `Capture -> str` (text + attachments → text) | ✅ **images real**: Claude (Haiku 5.5) alt text describing the content and quoting important text, one call per image, typed text as context. Other files, and any image that fails, get the stub's file-name marker: `whiteboard_plan.jpg` → `[image: whiteboard plan (whiteboard_plan.jpg)]`. Markers go on their own lines after the typed text | audio transcripts (local speech-to-text), PDF and web-page text extraction |
 | Atomizer | `Capture.content -> list[str]` | ✅ **real**: Claude (Haiku 5.5) splits into self-contained notes; paragraph split as fallback | n/a |
 | Contextualizer | `(fragment, Capture) -> str` | identity (the LLM Atomizer already resolves references) | separate pass only if atomizing and contextualizing need different models |
 | Enricher | `list[str] -> list[Enrichment]` (one call per capture) | ✅ **real**: Claude (Haiku 5.5) keywords with synonyms and zh/en equivalents, tags reused from the store's vocabulary, entities; frequency stub as fallback | n/a |

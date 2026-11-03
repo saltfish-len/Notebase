@@ -29,7 +29,8 @@ class Config:
     embedder: str | None = field(default_factory=lambda: os.environ.get("NOTEBASE_EMBEDDER"))
     # optional: truncate Matryoshka models (e.g. Qwen3 1024 -> 256) / size of hashing stub
     embedding_dim: int | None = field(default_factory=lambda: _env_int("NOTEBASE_EMBED_DIM"))
-    # "anthropic" (default): LLM Atomizer + Enricher on Claude; "none": stubs only
+    # "anthropic" (default): Normalizer (image alt text), Atomizer and Enricher on
+    # Claude; "none": stubs only, nothing leaves the machine
     llm: str = field(default_factory=lambda: os.environ.get("NOTEBASE_LLM", "anthropic"))
     llm_model: str = field(
         default_factory=lambda: os.environ.get("NOTEBASE_LLM_MODEL", "claude-haiku-5-5")
@@ -40,6 +41,9 @@ class Config:
     )
     enricher_model: str | None = field(
         default_factory=lambda: os.environ.get("NOTEBASE_ENRICHER_MODEL")
+    )
+    normalizer_model: str | None = field(
+        default_factory=lambda: os.environ.get("NOTEBASE_NORMALIZER_MODEL")
     )
 
 
@@ -108,11 +112,17 @@ class Notebase:
         store.bind_embedding(embedder.name, embedder.dim)
         store.ensure_indexes()
 
-        atomizer = enricher = None
+        atomizer = enricher = normalizer = None
         if config.llm == "anthropic":
-            from notebase.blackbox.llm import LLMAtomizer, LLMEnricher, build_client
+            from notebase.blackbox.llm import (
+                LLMAtomizer,
+                LLMEnricher,
+                VisionNormalizer,
+                build_client,
+            )
 
             client = build_client()
+            normalizer = VisionNormalizer(client, model=config.normalizer_model or config.llm_model)
             atomizer = LLMAtomizer(client, model=config.atomizer_model or config.llm_model)
             enricher = LLMEnricher(
                 client,
@@ -121,4 +131,6 @@ class Notebase:
             )
         elif config.llm != "none":
             raise ValueError(f"NOTEBASE_LLM must be 'anthropic' or 'none', not {config.llm!r}")
-        return cls.create(store, embedder, atomizer=atomizer, enricher=enricher)
+        return cls.create(
+            store, embedder, atomizer=atomizer, enricher=enricher, normalizer=normalizer
+        )

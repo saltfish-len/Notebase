@@ -1,4 +1,5 @@
-"""LLM-backed black boxes: Atomizer and Enricher on Claude (default: Haiku 5.5).
+"""LLM-backed black boxes on Claude (default: Haiku 5.5): Normalizer (image
+alt text), Atomizer and Enricher.
 
 Both return structured outputs (``client.messages.parse`` + Pydantic), so
 there is no free-text parsing. A write must never fail because of the LLM:
@@ -9,18 +10,122 @@ of this runs, so nothing the user wrote is lost.
 
 from __future__ import annotations
 
+import base64
 import logging
 import re
 from typing import Callable, Literal
 
 from pydantic import BaseModel
 
-from notebase.blackbox.stubs import FrequencyEnricher, ParagraphAtomizer
-from notebase.models import Capture, Enrichment, Entity
+from notebase.blackbox.images import prepare_image
+from notebase.blackbox.stubs import (
+    FilenameAltTextNormalizer,
+    FrequencyEnricher,
+    ParagraphAtomizer,
+    alt_text_marker,
+    place_markers,
+)
+from notebase.models import Attachment, Capture, Enrichment, Entity
 
 log = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "claude-haiku-5-5"
+
+# ------------------------------------------------------------------- normalizer
+
+NORMALIZER_SYSTEM = """\
+You write alt text for an image the user attached to a note in a personal \
+note-taking app. The note is found later by association: the user types a few \
+words they remember, and the alt text is what those words are matched against. \
+The user cannot see the image when searching, so the alt text must say what it \
+shows.
+
+Write 1-3 sentences that describe the content: what the image is (photo, \
+screenshot, whiteboard, diagram, document, chart, receipt, handwritten note...), \
+the main subject, and anything a person would remember it by. When the image \
+contains text that matters (a heading, the points on a whiteboard, a product \
+name, numbers on a receipt), include the important words exactly as written. \
+Don't start with "This image shows" or "An image of". Don't guess names of \
+people you don't know, and don't add opinions.
+
+Use the user's text, if any, to know what matters. It is stored next to the alt \
+text, so never copy it into the description, not as a title and not as a \
+closing remark; start with what the image is.
+
+Language: write the description in the language of the user's text (Chinese \
+text, Chinese description), while quoting text from the image as written. If \
+there is no user text, use the language of the text in the image, or English if \
+the image has no text."""
+
+
+class _AltText(BaseModel):
+    alt_text: str
+
+
+class VisionNormalizer:
+    """Images become alt text that describes their content (Claude vision).
+
+    Each image is one call, with the typed text as context. Other kinds of
+    files, and any image that fails (unreadable file, unsupported format, API
+    error, refusal), get the file-name marker from the stub instead, so a
+    write never fails because of this box.
+    """
+
+    def __init__(
+        self,
+        client,
+        model: str = DEFAULT_MODEL,
+        effort: str = "low",
+        fallback=None,
+    ) -> None:
+        self.client = client
+        self.model = model
+        self.effort = effort
+        self.fallback = fallback or FilenameAltTextNormalizer()
+
+    def normalize(self, capture: Capture) -> str:
+        markers = [self._marker(a, capture.text.strip()) for a in capture.attachments]
+        return place_markers(capture.text, markers)
+
+    def _marker(self, attachment: Attachment, text: str) -> str:
+        if attachment.kind != "image":
+            return self.fallback.normalize(Capture(text="", attachments=[attachment]))
+        try:
+            return alt_text_marker(attachment, self.describe(attachment, text))
+        except Exception as e:  # noqa: BLE001 - any failure -> file-name marker
+            log.warning(
+                "vision normalizer failed for %s (%s); using its file name", attachment.name, e
+            )
+            return self.fallback.normalize(Capture(text="", attachments=[attachment]))
+
+    def describe(self, attachment: Attachment, text: str = "") -> str:
+        if not attachment.path:
+            raise ValueError("attachment has no path")
+        media_type, data = prepare_image(attachment.path, attachment.media_type)
+        context = f"<user_text>\n{text}\n</user_text>" if text else "<user_text/>"
+        parsed = _parse(
+            self.client,
+            model=self.model,
+            effort=self.effort,
+            system=NORMALIZER_SYSTEM,
+            user=[
+                {
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": media_type,
+                        "data": base64.standard_b64encode(data).decode("ascii"),
+                    },
+                },
+                {"type": "text", "text": f"{context}\n\nFile name: {attachment.name}"},
+            ],
+            output_format=_AltText,
+        )
+        alt = parsed.alt_text.strip()
+        if not alt:
+            raise ValueError("model returned empty alt text")
+        return alt
+
 
 # --------------------------------------------------------------------- atomizer
 
