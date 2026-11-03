@@ -162,6 +162,9 @@ notebase/
 │   ├── mongo.py        # MongoDB + Vector Search
 │   └── memory.py       # in-memory, for tests
 ├── cli.py              # `notebase write` / `notebase find`
+├── server.py           # `notebase-web`: HTTP POST /write, /find + the web UI
+├── web/index.html      # the web UI (one file, no build step)
+├── jsonio.py           # JSON shapes of write and find results (server)
 └── mcp_server.py       # the same two verbs as MCP tools, for Claude Code and other LLM clients
 ```
 
@@ -254,6 +257,22 @@ Things to know:
 * On Apple Silicon the model runs on the GPU (MPS) by default. This is **not tested**; if it errors or is slow,
   `export NOTEBASE_DEVICE=cpu`.
 
+### Web UI
+
+```bash
+notebase-web
+```
+
+Then open <http://localhost:8765/>. One input box switches between **Write** and **Find**. Write takes typed text and
+files (the ＋ File button, drag and drop, or paste a screenshot). Find draws the result as a graph: seed notes have a
+ring and sit in the middle, a node's size is its activation, clusters are labelled halos, and clicking a note runs a
+new find from it, so you can follow associations. `#all` draws the whole graph.
+
+The server loads the model once at start, so a find then takes milliseconds instead of the CLI's 7 s. It listens
+on this machine only; `--host 0.0.0.0` exposes it to your network, **with no login**. `--port` changes the port.
+The same two verbs are an HTTP API: `POST /write {"text", "files": [{"name", "data": base64}]}` and
+`POST /find {"text", "k"}`. Uploaded files are kept in `NOTEBASE_FILES_DIR`.
+
 ### Use it from Claude Code (or another MCP client)
 
 `notebase-mcp` is an [MCP](https://modelcontextprotocol.io) server over stdio, so an LLM assistant can write
@@ -320,6 +339,7 @@ each file is split into atomic notes, tagged and linked. Things to know:
 | `NOTEBASE_LLM` | `anthropic` | `anthropic`: Normalizer (image alt text), Atomizer and Enricher on Claude; `none`: stubs only, fully offline |
 | `NOTEBASE_LLM_MODEL` | `claude-haiku-5-5` | model for both LLM boxes |
 | `NOTEBASE_NORMALIZER_MODEL` / `NOTEBASE_ATOMIZER_MODEL` / `NOTEBASE_ENRICHER_MODEL` | (unset) | per-box override, e.g. atomize with Sonnet, enrich with Haiku |
+| `NOTEBASE_FILES_DIR` | `~/.notebase/files` | where `notebase-web` keeps files uploaded with a write |
 | `ANTHROPIC_API_KEY` (or `CLAUDE_API_KEY`) | (unset) | Claude API key from the [Claude Console](https://platform.claude.com/) |
 
 Without a working API key, writes still succeed: the LLM boxes log a warning and fall back to their stubs.

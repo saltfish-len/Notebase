@@ -45,6 +45,10 @@ class Config:
     normalizer_model: str | None = field(
         default_factory=lambda: os.environ.get("NOTEBASE_NORMALIZER_MODEL")
     )
+    # where the web server keeps files uploaded with a write (the capture points here)
+    files_dir: str = field(
+        default_factory=lambda: os.environ.get("NOTEBASE_FILES_DIR", "~/.notebase/files")
+    )
 
 
 class Notebase:

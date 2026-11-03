@@ -1,0 +1,727 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notebase</title>
+<style>
+:root {
+  --bg: #f7f6f3; --panel: #ffffff; --ink: #1f1e1c; --muted: #6f6b64; --faint: #a19c93;
+  --line: #e4e1db; --accent: #2f6fde; --accent-ink: #ffffff; --edge: #8b8781;
+  --danger: #c2412d; --new: #1f9d55; --shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.05);
+  --c0: #2f6fde; --c1: #d9622b; --c2: #1f9d55; --c3: #9b4dca; --c4: #c79a13; --c5: #d1457a; --c6: #178a95; --c7: #6b7d2a;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #151514; --panel: #1e1e1c; --ink: #ecebe8; --muted: #a29e96; --faint: #6d6a64;
+    --line: #2f2e2b; --accent: #6b9bf2; --accent-ink: #0d1424; --edge: #8d8a84;
+    --danger: #ef7a66; --new: #4cc985; --shadow: 0 1px 2px rgba(0,0,0,.4), 0 4px 16px rgba(0,0,0,.3);
+    --c0: #6b9bf2; --c1: #f08a55; --c2: #4cc985; --c3: #bd84ea; --c4: #e3bb45; --c5: #ef75a2; --c6: #4dc0cb; --c7: #a6b85a;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #151514; --panel: #1e1e1c; --ink: #ecebe8; --muted: #a29e96; --faint: #6d6a64;
+  --line: #2f2e2b; --accent: #6b9bf2; --accent-ink: #0d1424; --edge: #8d8a84;
+  --danger: #ef7a66; --new: #4cc985; --shadow: 0 1px 2px rgba(0,0,0,.4), 0 4px 16px rgba(0,0,0,.3);
+  --c0: #6b9bf2; --c1: #f08a55; --c2: #4cc985; --c3: #bd84ea; --c4: #e3bb45; --c5: #ef75a2; --c6: #4dc0cb; --c7: #a6b85a;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--bg); color: var(--ink);
+  font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB",
+        "Microsoft YaHei", "Noto Sans CJK SC", Roboto, sans-serif;
+  display: flex; flex-direction: column;
+}
+button { font: inherit; color: inherit; }
+
+/* ------------------------------------------------------------- composer */
+header { padding: 16px 16px 0; max-width: 1400px; width: 100%; margin: 0 auto; }
+.brand { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+.brand h1 { font-size: 17px; margin: 0; letter-spacing: .01em; }
+.brand span { color: var(--muted); font-size: 13px; }
+.composer {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  box-shadow: var(--shadow); padding: 10px 12px; transition: border-color .15s;
+}
+.composer.drag { border-color: var(--accent); border-style: dashed; }
+.composer textarea {
+  width: 100%; border: 0; outline: 0; resize: none; background: transparent; color: var(--ink);
+  font: inherit; font-size: 16px; min-height: 26px; max-height: 40vh; padding: 2px 0;
+}
+.composer textarea::placeholder { color: var(--faint); }
+.row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.seg { display: inline-flex; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 2px; }
+.seg button {
+  border: 0; background: transparent; padding: 3px 12px; border-radius: 6px; cursor: pointer;
+  color: var(--muted); font-size: 14px;
+}
+.seg button[aria-pressed="true"] { background: var(--panel); color: var(--ink); box-shadow: var(--shadow); font-weight: 600; }
+.icon-btn {
+  border: 1px solid var(--line); background: transparent; border-radius: 8px; padding: 3px 10px;
+  cursor: pointer; color: var(--muted); font-size: 14px;
+}
+.icon-btn:hover { color: var(--ink); border-color: var(--faint); }
+.hint { color: var(--faint); font-size: 12.5px; margin-left: auto; }
+.go {
+  border: 0; background: var(--accent); color: var(--accent-ink); border-radius: 8px;
+  padding: 5px 16px; font-weight: 600; cursor: pointer; font-size: 14px;
+}
+.go:disabled { opacity: .55; cursor: progress; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips:empty { display: none; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 13px; padding: 2px 4px 2px 8px;
+  border: 1px solid var(--line); border-radius: 999px; background: var(--bg); max-width: 260px;
+}
+.chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip button { border: 0; background: transparent; cursor: pointer; color: var(--muted); padding: 0 4px; }
+.status { min-height: 22px; font-size: 13px; color: var(--muted); padding: 4px 2px 0; }
+.status.err { color: var(--danger); }
+.trail { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-size: 13px; color: var(--muted); }
+.trail button {
+  border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0 2px;
+  max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.trail button:hover { color: var(--ink); text-decoration: underline; }
+.trail button.cur { color: var(--ink); font-weight: 600; }
+
+/* ---------------------------------------------------------------- stage */
+main {
+  flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 12px;
+  padding: 8px 16px 16px; max-width: 1400px; width: 100%; margin: 0 auto;
+}
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); min-height: 0; }
+#graph-wrap { position: relative; overflow: hidden; }
+#graph { width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; user-select: none; }
+#graph.panning { cursor: grabbing; }
+.empty {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; color: var(--muted); padding: 24px; pointer-events: none;
+}
+.empty[hidden] { display: none; }
+.empty b { color: var(--ink); font-size: 16px; display: block; margin-bottom: 4px; }
+.legend { position: absolute; left: 12px; right: 120px; bottom: 10px; font-size: 12px; color: var(--faint); pointer-events: none; }
+.zoom { position: absolute; right: 10px; bottom: 10px; display: flex; gap: 4px; }
+.zoom button { width: 30px; height: 30px; padding: 0; background: var(--panel); }
+
+svg .edge { stroke: var(--edge); }
+svg .node circle.body { stroke: var(--panel); stroke-width: 2; cursor: pointer; transition: opacity .15s; }
+svg .node circle.ring { fill: none; stroke: var(--ink); stroke-width: 2; pointer-events: none; }
+svg .node circle.newring { fill: none; stroke: var(--new); stroke-width: 2.5; stroke-dasharray: 4 3; pointer-events: none; }
+svg .node text { font-size: 12px; fill: var(--ink); paint-order: stroke; stroke: var(--panel); stroke-width: 4px; stroke-linejoin: round; pointer-events: none; }
+svg .node.dim { opacity: .25; }
+svg .edge.dim { opacity: .06 !important; }
+svg .node.sel circle.body { stroke: var(--ink); stroke-width: 3; }
+svg .halo { stroke-width: 1; }
+svg .halo-label { font-size: 13px; font-weight: 600; paint-order: stroke; stroke: var(--panel); stroke-width: 4px; }
+
+/* ---------------------------------------------------------------- panel */
+#panel { overflow: auto; padding: 14px 16px; }
+#panel h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 8px; font-weight: 600; }
+#panel h3 { font-size: 14px; margin: 14px 0 6px; display: flex; align-items: center; gap: 8px; }
+#panel h3 .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+#panel h3 .n { color: var(--faint); font-weight: 400; }
+.notes { list-style: none; margin: 0; padding: 0; }
+.notes li {
+  display: grid; grid-template-columns: 16px 1fr; gap: 6px; padding: 6px 6px; border-radius: 8px; cursor: pointer;
+}
+.notes li:hover, .notes li.hl { background: var(--bg); }
+.notes .mark { color: var(--faint); font-size: 12px; padding-top: 2px; text-align: center; }
+.notes .mark.seed { color: var(--c4); }
+.notes .txt { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font-size: 14px; }
+.bar { height: 3px; border-radius: 2px; background: var(--line); margin-top: 4px; overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--accent); }
+.badge { font-size: 11px; color: var(--new); border: 1px solid var(--new); border-radius: 4px; padding: 0 4px; margin-left: 4px; }
+.detail { margin-bottom: 18px; }
+.detail .content { font-size: 15.5px; white-space: pre-wrap; word-break: break-word; margin: 4px 0 12px; }
+.tags { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 10px; }
+.tag { font-size: 12px; border-radius: 999px; padding: 1px 8px; background: var(--bg); border: 1px solid var(--line); color: var(--muted); }
+.tag.t { color: var(--ink); }
+dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 12.5px; color: var(--muted); margin: 8px 0 12px; }
+dt { color: var(--faint); }
+dd { margin: 0; word-break: break-all; }
+.actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.muted { color: var(--muted); font-size: 13.5px; }
+.written { border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px 4px; margin-bottom: 12px; }
+
+@media (max-width: 860px) {
+  main { grid-template-columns: 1fr; grid-template-rows: minmax(340px, 58vh) auto; }
+  body { height: auto; min-height: 100%; }
+  .hint { display: none; }
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><h1>Notebase</h1><span>write and find. Nothing else.</span></div>
+  <div class="composer" id="composer">
+    <textarea id="input" rows="1" autofocus></textarea>
+    <div class="chips" id="chips"></div>
+    <div class="row">
+      <div class="seg" role="group" aria-label="mode">
+        <button type="button" data-mode="write">Write</button>
+        <button type="button" data-mode="find">Find</button>
+      </div>
+      <button type="button" class="icon-btn" id="attach" title="Attach files (or drop / paste them here)">＋ File</button>
+      <input type="file" id="file" multiple hidden>
+      <span class="hint" id="hint"></span>
+      <button type="button" class="go" id="go">Find</button>
+    </div>
+  </div>
+  <div class="status" id="status" role="status"></div>
+  <div class="trail" id="trail"></div>
+</header>
+
+<main>
+  <section class="card" id="graph-wrap">
+    <svg id="graph" aria-label="association graph"></svg>
+    <div class="empty" id="empty">
+      <b>Nothing is filed here.</b>
+      Write a thought and it gets linked to what it resembles.<br>
+      Find with any cue, and you get back the region of memory it lands in.
+    </div>
+    <div class="legend" id="legend"></div>
+    <div class="zoom">
+      <button class="icon-btn" id="zin" title="Zoom in">+</button>
+      <button class="icon-btn" id="zout" title="Zoom out">−</button>
+      <button class="icon-btn" id="zfit" title="Fit">⤢</button>
+    </div>
+  </section>
+  <aside class="card" id="panel"></aside>
+</main>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const SVGNS = "http://www.w3.org/2000/svg";
+const input = $("input"), go = $("go"), statusEl = $("status"), panel = $("panel");
+const svg = $("graph");
+
+const state = {
+  mode: "find",
+  files: [],          // {name, size, data(base64)}
+  result: null,       // last find result
+  layout: new Map(),  // id -> {x, y}
+  newIds: new Set(),  // notes from the last write
+  written: null,      // last write result
+  selected: null,     // note id shown in detail
+  known: new Map(),   // every note seen this session, for details
+  trail: [],          // [{cue, label}]
+  trailPos: -1,
+  view: null,         // {x, y, w, h}
+  busy: false,
+};
+
+// ------------------------------------------------------------------ helpers
+function el(tag, attrs = {}, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") e.className = v;
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v);
+  }
+  for (const k of kids) if (k != null) e.append(k);
+  return e;
+}
+function sv(tag, attrs = {}) {
+  const e = document.createElementNS(SVGNS, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  return e;
+}
+function short(text, n) {
+  const t = text.replace(/\s+/g, " ").trim();
+  return t.length <= n ? t : t.slice(0, n - 1) + "…";
+}
+function clip(text, units) {  // truncate by visual width: CJK characters count double
+  const t = text.replace(/\s+/g, " ").trim();
+  let w = 0, out = "";
+  for (const ch of t) {
+    w += /[\u1100-\uffff]/.test(ch) ? 2 : 1;
+    if (w > units) return out + "…";
+    out += ch;
+  }
+  return out;
+}
+function setStatus(msg, err = false) { statusEl.textContent = msg; statusEl.classList.toggle("err", err); }
+function color(i) { return `var(--c${i % 8})`; }
+function hash(s) { let h = 2166136261; for (const c of s) h = Math.imul(h ^ c.charCodeAt(0), 16777619); return (h >>> 0) / 4294967296; }
+function store(k, v) { try { localStorage.setItem(k, v); } catch (_) {} }
+function load(k) { try { return localStorage.getItem(k); } catch (_) { return null; } }
+
+async function api(path, body) {
+  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  let data = null;
+  try { data = await r.json(); } catch (_) {}
+  if (!r.ok) throw new Error((data && data.error) || `${r.status} ${r.statusText}`);
+  return data;
+}
+
+// --------------------------------------------------------------------- mode
+function setMode(mode) {
+  state.mode = mode;
+  store("notebase.mode", mode);
+  for (const b of document.querySelectorAll(".seg button")) b.setAttribute("aria-pressed", b.dataset.mode === mode);
+  const mac = /Mac|iPhone|iPad/.test(navigator.platform);
+  if (mode === "write") {
+    input.placeholder = "A thought, a meeting dump, a quote… no title, no folder, no tags.";
+    $("hint").textContent = `${mac ? "⌘" : "Ctrl"}+Enter to write`;
+    go.textContent = "Write";
+  } else {
+    input.placeholder = "Any cue: a word, a question, a vague feeling…   (#tag filters)";
+    $("hint").textContent = "Enter to find · Shift+Enter for a new line";
+    go.textContent = "Find";
+  }
+  $("attach").hidden = mode !== "write";
+  renderChips();
+  input.focus();
+}
+for (const b of document.querySelectorAll(".seg button")) b.addEventListener("click", () => setMode(b.dataset.mode));
+
+function autosize() { input.style.height = "auto"; input.style.height = input.scrollHeight + "px"; }
+input.addEventListener("input", autosize);
+input.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" || e.isComposing) return;
+  if (state.mode === "find" && !e.shiftKey) { e.preventDefault(); submit(); }
+  else if (state.mode === "write" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); }
+});
+go.addEventListener("click", submit);
+
+// -------------------------------------------------------------------- files
+$("attach").addEventListener("click", () => $("file").click());
+$("file").addEventListener("change", (e) => { addFiles(e.target.files); e.target.value = ""; });
+const composer = $("composer");
+for (const t of ["dragenter", "dragover"]) document.addEventListener(t, (e) => {
+  if (![...(e.dataTransfer?.types || [])].includes("Files")) return;
+  e.preventDefault(); composer.classList.add("drag");
+});
+for (const t of ["dragleave", "drop"]) document.addEventListener(t, (e) => {
+  if (t === "dragleave" && e.relatedTarget) return;
+  composer.classList.remove("drag");
+});
+document.addEventListener("drop", (e) => {
+  if (!e.dataTransfer?.files?.length) return;
+  e.preventDefault(); addFiles(e.dataTransfer.files);
+});
+input.addEventListener("paste", (e) => {
+  const files = [...(e.clipboardData?.files || [])];
+  if (files.length) { e.preventDefault(); addFiles(files); }
+});
+function addFiles(list) {
+  if (state.mode !== "write") setMode("write");
+  for (const f of list) {
+    const entry = { name: f.name || "pasted.png", size: f.size, data: null };
+    state.files.push(entry);
+    const reader = new FileReader();
+    reader.onload = () => { entry.data = String(reader.result).split(",", 2)[1] || ""; renderChips(); };
+    reader.onerror = () => { state.files = state.files.filter((x) => x !== entry); setStatus(`could not read ${entry.name}`, true); renderChips(); };
+    reader.readAsDataURL(f);
+  }
+  renderChips();
+}
+function renderChips() {
+  const box = $("chips");
+  box.replaceChildren();
+  if (state.mode !== "write") return;
+  state.files.forEach((f, i) => {
+    const kb = f.size < 1024 * 1024 ? `${Math.max(1, Math.round(f.size / 1024))} KB` : `${(f.size / 1048576).toFixed(1)} MB`;
+    box.append(el("span", { class: "chip", title: f.name },
+      el("span", {}, `${f.data == null ? "⏳" : "📎"} ${f.name} · ${kb}`),
+      el("button", { "aria-label": `remove ${f.name}`, onclick: () => { state.files.splice(i, 1); renderChips(); } }, "×")));
+  });
+}
+
+// ------------------------------------------------------------------- submit
+async function submit() {
+  if (state.busy) return;
+  const text = input.value;
+  if (state.mode === "find") {
+    if (!text.trim()) return;
+    state.written = null; state.newIds = new Set();
+    await find(text, { label: text });
+    return;
+  }
+  if (!text.trim() && !state.files.length) return;
+  if (state.files.some((f) => f.data == null)) { setStatus("still reading the files…"); return; }
+  busy(true, state.files.length ? "Writing… (describing attached images)" : "Writing…");
+  try {
+    const res = await api("/write", { text, files: state.files.map(({ name, data }) => ({ name, data })) });
+    input.value = ""; autosize();
+    state.files = []; renderChips();
+    state.written = res;
+    state.newIds = new Set(res.notes.map((n) => n.id));
+    for (const n of res.notes) state.known.set(n.id, n);
+    const links = res.notes.reduce((a, n) => a + n.links.length, 0);
+    busy(false);
+    setStatus(`Captured → ${res.notes.length} atomic note${res.notes.length === 1 ? "" : "s"}, ${links} link${links === 1 ? "" : "s"} to what you already had.`);
+    if (res.notes.length) await find(res.notes[0].content, { label: "✍ " + res.notes[0].content, select: res.notes[0].id, keepStatus: true });
+  } catch (e) {
+    busy(false);
+    setStatus(e.message, true);
+  }
+}
+function busy(on, msg) {
+  state.busy = on; go.disabled = on;
+  if (on && msg) setStatus(msg);
+}
+
+async function find(cue, { label, select = null, fromTrail = false, keepStatus = false } = {}) {
+  if (state.busy) return;
+  busy(true, keepStatus ? null : "Finding…");
+  try {
+    const t0 = performance.now();
+    const res = await api("/find", { text: cue, k: 5 });
+    busy(false);
+    for (const [id, n] of Object.entries(res.notes)) state.known.set(id, n);
+    if (!fromTrail) {
+      state.trail = state.trail.slice(0, state.trailPos + 1);
+      state.trail.push({ cue, label: clip(label || cue, 26), select });
+      if (state.trail.length > 6) state.trail.shift();
+      state.trailPos = state.trail.length - 1;
+    }
+    state.result = res;
+    state.selected = select && res.notes[select] ? select : (select || null);
+    renderTrail();
+    renderGraph(true);
+    renderPanel();
+    if (!keepStatus) {
+      const n = Object.keys(res.notes).length;
+      setStatus(n ? `${n} note${n === 1 ? "" : "s"} in ${res.clusters.length} cluster${res.clusters.length === 1 ? "" : "s"} · ${Math.round(performance.now() - t0)} ms`
+                  : "Nothing comes to mind.");
+    }
+  } catch (e) {
+    busy(false);
+    setStatus(e.message, true);
+  }
+}
+
+function renderTrail() {
+  const box = $("trail");
+  box.replaceChildren();
+  if (state.trail.length < 2) return;
+  state.trail.forEach((t, i) => {
+    if (i) box.append("→");
+    box.append(el("button", {
+      class: i === state.trailPos ? "cur" : "", title: t.cue,
+      onclick: () => { state.trailPos = i; find(t.cue, { select: t.select, fromTrail: true }); },
+    }, t.label));
+  });
+}
+
+// ------------------------------------------------------------------- layout
+// A small force simulation: seeds pulled to the centre, pull grows with
+// activation, links act as springs (stronger link = shorter), clusters cohere
+// and push other clusters away. Nodes seen before keep their place.
+function layoutGraph(res) {
+  const ids = Object.keys(res.notes);
+  const seeds = new Set(res.seeds);
+  const clusterOf = new Map();
+  res.clusters.forEach((c, ci) => c.note_ids.forEach((id) => clusterOf.set(id, ci)));
+  const nodes = ids.map((id) => {
+    const act = res.activation[id] ?? 0;
+    return { id, act, seed: seeds.has(id), cluster: clusterOf.get(id) ?? 0, r: 7 + 13 * Math.min(1, act) + (seeds.has(id) ? 2 : 0) };
+  });
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  // cluster anchors: the cluster holding the top seed in the middle, others on a ring
+  const top = res.seeds[0] ? clusterOf.get(res.seeds[0]) ?? 0 : 0;
+  const order = res.clusters.map((_, i) => i).filter((i) => i !== top);
+  const anchors = new Map([[top, { x: 0, y: 0 }]]);
+  order.forEach((ci, k) => {
+    const a = (2 * Math.PI * k) / Math.max(order.length, 1) - Math.PI / 2;
+    anchors.set(ci, { x: Math.cos(a) * 280, y: Math.sin(a) * 220 });
+  });
+  for (const n of nodes) {
+    const prev = state.layout.get(n.id);
+    const a = anchors.get(n.cluster) || { x: 0, y: 0 };
+    const h1 = hash(n.id), h2 = hash(n.id + "y");
+    n.x = prev ? prev.x : a.x + (h1 - 0.5) * 160 * (1.2 - n.act);
+    n.y = prev ? prev.y : a.y + (h2 - 0.5) * 160 * (1.2 - n.act);
+  }
+  // re-centre: shift the old positions so the new top seed starts in the middle
+  const s0 = byId.get(res.seeds[0]);
+  if (s0 && state.layout.has(s0.id)) {
+    const dx = s0.x, dy = s0.y;
+    for (const n of nodes) if (state.layout.has(n.id)) { n.x -= dx; n.y -= dy; }
+  }
+  const edges = res.edges.filter((e) => byId.has(e.source) && byId.has(e.target))
+    .map((e) => ({ s: byId.get(e.source), t: byId.get(e.target), w: e.weight }));
+
+  const N = 320;
+  for (let it = 0; it < N; it++) {
+    const alpha = 1 - it / N;
+    for (let i = 0; i < nodes.length; i++) {
+      const a = nodes[i];
+      for (let j = i + 1; j < nodes.length; j++) {
+        const b = nodes[j];
+        let dx = b.x - a.x, dy = b.y - a.y;
+        let d2 = dx * dx + dy * dy;
+        if (d2 < 0.01) { dx = (hash(a.id + b.id) - 0.5); dy = 0.5; d2 = 0.5; }
+        const d = Math.sqrt(d2);
+        let f = (a.cluster === b.cluster ? 6000 : 14000) / d2;
+        const min = a.r + b.r + 48;
+        if (d < min) f += (min - d) * 0.5;
+        f = Math.min(f, 40) * alpha;
+        const fx = (dx / d) * f, fy = (dy / d) * f;
+        a.x -= fx; a.y -= fy; b.x += fx; b.y += fy;
+      }
+    }
+    for (const e of edges) {
+      const dx = e.t.x - e.s.x, dy = e.t.y - e.s.y;
+      const d = Math.sqrt(dx * dx + dy * dy) || 1;
+      const L = 110 + 150 * (1 - e.w);
+      const f = ((d - L) / d) * (0.04 + 0.08 * e.w) * alpha;
+      e.s.x += dx * f; e.s.y += dy * f; e.t.x -= dx * f; e.t.y -= dy * f;
+    }
+    const cent = new Map();
+    for (const n of nodes) {
+      const c = cent.get(n.cluster) || { x: 0, y: 0, k: 0 };
+      c.x += n.x; c.y += n.y; c.k++; cent.set(n.cluster, c);
+    }
+    for (const n of nodes) {
+      const c = cent.get(n.cluster);
+      n.x += (c.x / c.k - n.x) * 0.04 * alpha;
+      n.y += (c.y / c.k - n.y) * 0.04 * alpha;
+      const g = (n.seed ? 0.03 : 0.006 + 0.03 * n.act) * alpha;
+      n.x -= n.x * g; n.y -= n.y * g;
+    }
+  }
+  return { nodes, edges, byId };
+}
+
+// ------------------------------------------------------------------ drawing
+let graph = null;
+function renderGraph(animate) {
+  const res = state.result;
+  $("empty").hidden = !!(res && res.seeds.length) || !!(res && Object.keys(res.notes).length);
+  if (res && !Object.keys(res.notes).length) {
+    $("empty").hidden = false;
+    $("empty").replaceChildren(el("b", {}, "Nothing comes to mind."), "Try another cue, or write something first.");
+  }
+  if (!res) return;
+  if (!Object.keys(res.notes).length) { svg.replaceChildren(); graph = null; $("legend").textContent = ""; return; }
+  const from = new Map(state.layout);
+  graph = layoutGraph(res);
+  state.layout = new Map(graph.nodes.map((n) => [n.id, { x: n.x, y: n.y }]));
+  svg.replaceChildren();
+  const gHalo = sv("g"), gEdge = sv("g"), gNode = sv("g");
+  svg.append(gHalo, gEdge, gNode);
+
+  for (const e of graph.edges) {
+    e.el = sv("line", { class: "edge", "stroke-width": (0.6 + 2.6 * e.w).toFixed(2), "stroke-opacity": (0.25 + 0.55 * e.w).toFixed(2) });
+    gEdge.append(e.el);
+  }
+  for (const n of graph.nodes) {
+    const note = res.notes[n.id];
+    const g = sv("g", { class: "node" + (n.id === state.selected ? " sel" : "") });
+    const body = sv("circle", { class: "body", r: n.r, fill: color(n.cluster) });
+    const title = sv("title"); title.textContent = note.content; body.append(title);
+    g.append(body);
+    if (n.seed) g.append(sv("circle", { class: "ring", r: n.r + 4 }));
+    if (state.newIds.has(n.id)) g.append(sv("circle", { class: "newring", r: n.r + (n.seed ? 8 : 4) }));
+    const label = sv("text", { "text-anchor": "middle", y: n.r + 15 });
+    label.textContent = clip(note.content, n.seed ? 28 : 20);
+    g.append(label);
+    g.dataset.id = n.id;
+    n.el = g; n.label = label;
+    gNode.append(g);
+    body.addEventListener("pointerenter", () => highlight(n.id));
+    body.addEventListener("pointerleave", () => highlight(null));
+  }
+  // show labels only where they fit: seeds and the most activated notes first
+  const ranked = [...graph.nodes].sort((a, b) => (b.seed - a.seed) || (b.act - a.act));
+  ranked.forEach((n, i) => { n.label.style.display = i < 14 ? "" : "none"; });
+
+  graph.halos = res.clusters.map((c, ci) => {
+    if (c.note_ids.length < 2 || res.clusters.length < 2 && c.note_ids.length < 3) return null;
+    const circle = sv("circle", { class: "halo", fill: color(ci), "fill-opacity": 0.07, stroke: color(ci), "stroke-opacity": 0.35 });
+    const text = sv("text", { class: "halo-label", "text-anchor": "middle", fill: color(ci) });
+    text.textContent = c.label;
+    gHalo.append(circle, text);
+    return { ci, circle, text, ids: c.note_ids };
+  }).filter(Boolean);
+
+  const target = new Map(graph.nodes.map((n) => [n.id, { x: n.x, y: n.y }]));
+  const start = new Map(graph.nodes.map((n) => {
+    const p = from.get(n.id);
+    return [n.id, p ? { ...p } : { x: n.x * 0.6, y: n.y * 0.6 }];
+  }));
+  const fitView = computeFit();
+  const fromView = state.view;
+  if (!animate || !fromView || matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    place(target); state.view = fitView; applyView(); return;
+  }
+  const t0 = performance.now(), D = 450;
+  const step = (now) => {
+    const k = Math.min(1, (now - t0) / D), e = 1 - Math.pow(1 - k, 3);
+    const pos = new Map();
+    for (const [id, p] of target) { const s = start.get(id); pos.set(id, { x: s.x + (p.x - s.x) * e, y: s.y + (p.y - s.y) * e }); }
+    place(pos);
+    state.view = { x: fromView.x + (fitView.x - fromView.x) * e, y: fromView.y + (fitView.y - fromView.y) * e,
+                   w: fromView.w + (fitView.w - fromView.w) * e, h: fromView.h + (fitView.h - fromView.h) * e };
+    applyView();
+    if (k < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+function place(pos) {
+  for (const n of graph.nodes) { const p = pos.get(n.id); n.px = p.x; n.py = p.y; n.el.setAttribute("transform", `translate(${p.x.toFixed(1)},${p.y.toFixed(1)})`); }
+  for (const e of graph.edges) {
+    e.el.setAttribute("x1", e.s.px.toFixed(1)); e.el.setAttribute("y1", e.s.py.toFixed(1));
+    e.el.setAttribute("x2", e.t.px.toFixed(1)); e.el.setAttribute("y2", e.t.py.toFixed(1));
+  }
+  for (const h of graph.halos) {
+    const pts = h.ids.map((id) => graph.byId.get(id)).filter(Boolean);
+    const cx = pts.reduce((a, n) => a + n.px, 0) / pts.length, cy = pts.reduce((a, n) => a + n.py, 0) / pts.length;
+    const r = Math.max(...pts.map((n) => Math.hypot(n.px - cx, n.py - cy) + n.r)) + 26;
+    h.circle.setAttribute("cx", cx.toFixed(1)); h.circle.setAttribute("cy", cy.toFixed(1)); h.circle.setAttribute("r", r.toFixed(1));
+    h.text.setAttribute("x", cx.toFixed(1)); h.text.setAttribute("y", (cy - r - 6).toFixed(1));
+  }
+}
+
+function computeFit() {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const n of graph.nodes) {
+    x0 = Math.min(x0, n.x - n.r - 90); x1 = Math.max(x1, n.x + n.r + 90);
+    y0 = Math.min(y0, n.y - n.r - 50); y1 = Math.max(y1, n.y + n.r + 40);
+  }
+  for (const h of graph.halos) {
+    const pts = h.ids.map((id) => graph.byId.get(id)).filter(Boolean);
+    const cx = pts.reduce((a, n) => a + n.x, 0) / pts.length, cy = pts.reduce((a, n) => a + n.y, 0) / pts.length;
+    const r = Math.max(...pts.map((n) => Math.hypot(n.x - cx, n.y - cy) + n.r)) + 26;
+    x0 = Math.min(x0, cx - r - 10); x1 = Math.max(x1, cx + r + 10); y0 = Math.min(y0, cy - r - 30); y1 = Math.max(y1, cy + r + 10);
+  }
+  const box = svg.getBoundingClientRect();
+  const aspect = (box.width || 800) / (box.height || 600);
+  let w = Math.max(x1 - x0, box.width || 360), h = Math.max(y1 - y0, box.height || 280);
+  if (w / h > aspect) h = w / aspect; else w = h * aspect;
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  return { x: cx - w / 2, y: cy - h / 2, w, h };
+}
+function applyView() {
+  const v = state.view; if (!v) return;
+  svg.setAttribute("viewBox", `${v.x.toFixed(1)} ${v.y.toFixed(1)} ${v.w.toFixed(1)} ${v.h.toFixed(1)}`);
+}
+
+function highlight(id) {
+  if (!graph) return;
+  const near = new Set(id ? [id] : []);
+  if (id) for (const e of graph.edges) { if (e.s.id === id) near.add(e.t.id); if (e.t.id === id) near.add(e.s.id); }
+  for (const n of graph.nodes) n.el.classList.toggle("dim", !!id && !near.has(n.id));
+  for (const e of graph.edges) e.el.classList.toggle("dim", !!id && e.s.id !== id && e.t.id !== id);
+  for (const li of panel.querySelectorAll("li[data-id]")) li.classList.toggle("hl", li.dataset.id === id);
+}
+
+// --------------------------------------------------------- pan, zoom, click
+let drag = null;
+svg.addEventListener("pointerdown", (e) => {
+  if (!state.view) return;
+  drag = { x: e.clientX, y: e.clientY, view: { ...state.view }, moved: false, node: e.target.closest(".node") };
+  svg.setPointerCapture(e.pointerId);
+});
+svg.addEventListener("pointermove", (e) => {
+  if (!drag) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  if (!drag.moved && Math.hypot(dx, dy) < 4) return;
+  drag.moved = true; svg.classList.add("panning");
+  const box = svg.getBoundingClientRect(), s = drag.view.w / box.width;
+  state.view = { ...drag.view, x: drag.view.x - dx * s, y: drag.view.y - dy * s };
+  applyView();
+});
+svg.addEventListener("pointerup", (e) => {
+  const d = drag; drag = null; svg.classList.remove("panning");
+  if (!d || d.moved) return;
+  const target = d.node || (document.elementFromPoint(e.clientX, e.clientY) || {}).closest?.(".node");
+  if (target) recentre(target.dataset.id);
+});
+svg.addEventListener("wheel", (e) => { e.preventDefault(); zoomAt(Math.exp(e.deltaY * 0.0015), e.clientX, e.clientY); }, { passive: false });
+function zoomAt(f, clientX, clientY) {
+  const v = state.view; if (!v) return;
+  const box = svg.getBoundingClientRect();
+  const px = clientX == null ? 0.5 : (clientX - box.left) / box.width, py = clientY == null ? 0.5 : (clientY - box.top) / box.height;
+  const w = Math.min(Math.max(v.w * f, 120), 12000), h = w * (v.h / v.w);
+  state.view = { x: v.x + (v.w - w) * px, y: v.y + (v.h - h) * py, w, h };
+  applyView();
+}
+$("zin").addEventListener("click", () => zoomAt(1 / 1.3));
+$("zout").addEventListener("click", () => zoomAt(1.3));
+$("zfit").addEventListener("click", () => { if (graph) { state.view = computeFit(); applyView(); } });
+addEventListener("resize", () => { if (graph) { state.view = computeFit(); applyView(); } });
+
+function recentre(id) {
+  const note = state.known.get(id);
+  if (!note) return;
+  find(note.content, { label: note.content, select: id });
+}
+
+// -------------------------------------------------------------------- panel
+function renderPanel() {
+  panel.replaceChildren();
+  const res = state.result;
+  const sel = state.selected && state.known.get(state.selected);
+  if (sel) panel.append(detail(sel));
+  if (state.written && state.written.notes.length) {
+    const box = el("div", { class: "written" }, el("h2", {}, "Just written"));
+    const ul = el("ul", { class: "notes" });
+    for (const n of state.written.notes) ul.append(noteRow(n.id, n, false, null));
+    box.append(ul);
+    panel.append(box);
+  }
+  if (!res) {
+    if (!sel && !state.written) panel.append(el("h2", {}, "How it works"),
+      el("p", { class: "muted" }, "Write: type or paste anything, attach images. It is split into atomic notes, tagged, embedded and linked to similar notes for you."),
+      el("p", { class: "muted" }, "Find: give any cue, in any language. You get the notes it lands on (★) and the notes associated with them, grouped into clusters. Click a note in the graph to re-centre on it."));
+    return;
+  }
+  const ids = Object.keys(res.notes);
+  if (!ids.length) return;
+  panel.append(el("h2", {}, sel ? "Around it" : "Found"));
+  const seeds = new Set(res.seeds);
+  res.clusters.forEach((c, ci) => {
+    panel.append(el("h3", {}, el("span", { class: "dot", style: `background:${color(ci)}` }), c.label, el("span", { class: "n" }, String(c.note_ids.length))));
+    const ul = el("ul", { class: "notes" });
+    const sorted = [...c.note_ids].sort((a, b) => (res.activation[b] ?? 0) - (res.activation[a] ?? 0));
+    for (const id of sorted) ul.append(noteRow(id, res.notes[id], seeds.has(id), res.activation[id] ?? 0));
+    panel.append(ul);
+  });
+  $("legend").textContent = "★ ring = seed (hit directly) · size = activation · click a note to re-centre";
+}
+
+function noteRow(id, note, seed, act) {
+  const txt = el("div", {}, el("div", { class: "txt" }, note.content));
+  if (state.newIds.has(id)) txt.firstChild.append(el("span", { class: "badge" }, "new"));
+  if (act != null) txt.append(el("div", { class: "bar" }, el("i", { style: `width:${Math.round(100 * Math.min(1, act))}%` })));
+  return el("li", {
+    "data-id": id, title: "Show this note",
+    onclick: () => { state.selected = id; renderPanel(); if (graph) for (const n of graph.nodes) n.el.classList.toggle("sel", n.id === id); panel.scrollTop = 0; },
+    onpointerenter: () => highlight(id), onpointerleave: () => highlight(null),
+  }, el("span", { class: "mark" + (seed ? " seed" : "") }, seed ? "★" : "·"), txt);
+}
+
+function detail(n) {
+  const box = el("div", { class: "detail" }, el("h2", {}, "Note"), el("div", { class: "content" }, n.content));
+  const tags = el("div", { class: "tags" });
+  for (const t of n.tags || []) tags.append(el("span", { class: "tag t" }, "#" + t));
+  for (const k of n.keywords || []) tags.append(el("span", { class: "tag" }, k));
+  if (tags.childNodes.length) box.append(tags);
+  const dl = el("dl");
+  const row = (k, v) => { if (v) dl.append(el("dt", {}, k), el("dd", {}, v)); };
+  row("entities", (n.entities || []).map((e) => `${e.name} (${e.type})`).join(", "));
+  row("written", n.created_at ? new Date(n.created_at).toLocaleString() : "");
+  row("source", n.source);
+  row("links", String((n.links || []).length));
+  const act = state.result && state.result.activation[n.id];
+  if (act != null) row("activation", act.toFixed(2));
+  box.append(dl);
+  box.append(el("div", { class: "actions" },
+    el("button", { class: "icon-btn", onclick: () => recentre(n.id) }, "Re-centre here"),
+    el("button", { class: "icon-btn", onclick: () => { state.selected = null; renderPanel(); if (graph) for (const x of graph.nodes) x.el.classList.remove("sel"); } }, "Close")));
+  return box;
+}
+
+// --------------------------------------------------------------------- boot
+setMode(load("notebase.mode") === "write" ? "write" : "find");
+renderPanel();
+</script>
+</body>
+</html>
