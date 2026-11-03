@@ -166,10 +166,36 @@ notebase/
 
 ## Quickstart
 
+You need **Docker** (Docker Desktop on macOS; the MongoDB image runs on Intel and Apple Silicon), **Python 3.10+**
+(on macOS the system Python is too old: `brew install python`) and about 5 GB of disk: 2 GB for the MongoDB image,
+1.2 GB for the embedding model, about 1.5 GB for PyTorch and the other Python packages. The steps below took about
+2 minutes in a fresh Linux container, plus the downloads. **Not tested on macOS yet.**
+
 ```bash
-docker compose up -d          # MongoDB with Vector Search (mongodb-atlas-local)
-pip install torch --index-url https://download.pytorch.org/whl/cpu   # CPU-only torch (skip if you have a GPU)
-pip install -e ".[dev]"
+git clone https://github.com/saltfish-len/Notebase.git && cd Notebase
+docker compose up -d          # MongoDB with Vector Search; restarts with Docker from now on
+python3 -m venv .venv && source .venv/bin/activate
+```
+
+On **macOS**, install as is (PyPI's PyTorch already supports Apple Silicon):
+
+```bash
+pip install -e .
+```
+
+On **Linux** without an NVIDIA GPU, install the CPU build of PyTorch first, or pip downloads several GB of CUDA:
+
+```bash
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+pip install -e .
+```
+
+Then add a Claude API key from the [Claude Console](https://platform.claude.com/). Without one, everything still
+works, but notes are split by paragraph, keywords are plain word counts and images are described only by their file
+name (each write prints a warning; `export NOTEBASE_LLM=none` turns the LLM off quietly).
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
 ```bash
@@ -178,16 +204,6 @@ notebase write "Coffee in the afternoon hurts deep sleep."
 notebase write "Spaced repetition helps long-term retention."
 notebase find "怎么记得更牢"
 ```
-
-```bash
-notebase write "Sprint plan we agreed on." -a ~/Desktop/whiteboard_sprint_plan.jpg
-```
-
-`-a` attaches a file (repeat it for several). An image becomes alt text that describes it, written by
-Claude, for example `[image: Whiteboard with the Q4 roadmap: 1. cut export… (IMG_4471.jpg)]`, so you can find it
-later by what it showed. JPEG, PNG, GIF, WebP, HEIC (iPhone), TIFF and BMP work; large photos are shrunk
-before upload. Other files (audio, PDF, ...) are described only by their file name for now. Only a reference to
-each file is kept, not a copy.
 
 ```
 ◆ ...
@@ -199,11 +215,32 @@ each file is kept, not a copy.
 ★ marks a seed note the query hit directly. · marks a note reached by association. `--json` gives the full
 `FindResult` (nodes, edges, clusters) for a graph UI.
 
+```bash
+notebase write "Sprint plan we agreed on." -a ~/Desktop/whiteboard_sprint_plan.jpg
+```
+
+`-a` attaches a file (repeat it for several). An image becomes alt text that describes it, written by
+Claude, for example `[image: Whiteboard with the Q4 roadmap: 1. cut export… (IMG_4471.jpg)]`, so you can find it
+later by what it showed. JPEG, PNG, GIF, WebP, HEIC (iPhone), TIFF and BMP work; large photos are shrunk
+before upload. Other files (audio, PDF, ...) are described only by their file name for now. Only a reference to
+each file is kept, not a copy.
+
 The first run downloads the embedding model, [Qwen3-Embedding-0.6B](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B)
-(about 1.2 GB). It runs locally on CPU, CUDA or Apple Silicon, so embedding never sends notes anywhere. The LLM boxes
-do send text and attached images to the Claude API; set `NOTEBASE_LLM=none` to keep everything on your machine. It works across
-Chinese and English, so a cue in one language finds notes written in the other. See
-[docs/embedding.md](docs/embedding.md) for why this model was chosen.
+(about 1.2 GB). It runs locally on CPU, CUDA or Apple Silicon, and works across Chinese and English, so a cue in one
+language finds notes written in the other. See [docs/embedding.md](docs/embedding.md) for why this model was chosen.
+Embedding never sends notes anywhere, but the LLM boxes send text and attached images to the Claude API;
+`NOTEBASE_LLM=none` keeps everything on your machine.
+
+Things to know:
+
+* Each `notebase` command loads the model again, so it takes about 7 s (measured on a cloud container CPU), even for a find. A
+  long-running server will fix this ([#2](https://github.com/saltfish-len/Notebase/issues/2)).
+* If MongoDB isn't running, commands stop with "cannot reach MongoDB"; run `docker compose up -d` in the folder.
+* A database created with an older `docker-compose.yml` (before `hostname: mongodb`) won't start after the
+  container is recreated. Early versions only: `docker compose down -v && docker compose up -d` starts over
+  with an empty database.
+* On Apple Silicon the model runs on the GPU (MPS) by default. This is **not tested**; if it errors or is slow,
+  `export NOTEBASE_DEVICE=cpu`.
 
 ### Configuration
 
@@ -212,6 +249,7 @@ Chinese and English, so a cue in one language finds notes written in the other. 
 | `NOTEBASE_MONGO_URI` | `mongodb://localhost:27017/?directConnection=true` | |
 | `NOTEBASE_DB` | `notebase` | one database = one embedding model |
 | `NOTEBASE_EMBEDDER` | `qwen3-0.6b` | preset (`qwen3-0.6b`, `bge-m3`, `minilm-multilingual`), `hashing` (offline stub), or any sentence-transformers model id |
+| `NOTEBASE_DEVICE` | auto | `cpu`, `cuda` or `mps` for the embedding model; auto picks CUDA, then MPS, then CPU |
 | `NOTEBASE_EMBED_DIM` | model native | truncate Matryoshka models, e.g. `256` for Qwen3 |
 | `NOTEBASE_SIMILARITY_FLOOR` | `0.3` | only for custom model ids: the cosine an unrelated pair typically gets |
 | `NOTEBASE_LLM` | `anthropic` | `anthropic`: Normalizer (image alt text), Atomizer and Enricher on Claude; `none`: stubs only, fully offline |

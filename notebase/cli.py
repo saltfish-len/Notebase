@@ -12,6 +12,11 @@ from notebase.app import Config, Notebase
 from notebase.models import Attachment, FindResult, WriteResult
 from notebase.storage.base import EmbeddingMismatch
 
+try:
+    from pymongo.errors import ConnectionFailure
+except ImportError:  # pragma: no cover - pymongo is a dependency
+    ConnectionFailure = OSError
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="notebase", description="Write and find. That's it.")
@@ -42,11 +47,23 @@ def main(argv: list[str] | None = None) -> int:
         except OSError as e:
             parser.error(f"cannot attach {e.filename}: {e.strerror}")
     _quiet_model_loading()
+    config = Config()
     try:
-        app = Notebase.from_config(Config())
+        return _run(parser, args, config, attachments)
     except EmbeddingMismatch as e:
         print(f"notebase: {e}", file=sys.stderr)
         return 2
+    except ConnectionFailure:
+        print(
+            f"notebase: cannot reach MongoDB at {config.mongo_uri}\n"
+            "Is it running? Start it from the Notebase folder with: docker compose up -d",
+            file=sys.stderr,
+        )
+        return 2
+
+
+def _run(parser, args, config: Config, attachments: list[Attachment]) -> int:
+    app = Notebase.from_config(config)
 
     if args.verb == "write":
         text = args.text

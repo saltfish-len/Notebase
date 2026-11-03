@@ -63,3 +63,18 @@ State at the end: 29 fast tests pass; the MongoDB tests (3, including a capture 
 4. **End to end** (MongoDB, real Qwen3 embedder, live Haiku, CLI): 6 images (one HEIC) and 2 text notes. Six of seven cues found the right image as the top seed, including cross-lingual ones: "那张猫的照片" → the cat photo described in English, "咖啡花了多少钱" → the receipt, "端口被占用怎么办" → the error screenshot, "日本料理" → the sushi photo, "法国旅行" → the Eiffel Tower, "中文分词什么时候做" → the whiteboard. "铁塔" found nothing: the two-character cue scored under the retriever's threshold, a find-side limit ([#4](https://github.com/saltfish-len/Notebase/issues/4)), not an alt-text one.
 
 State at the end: 41 fast tests pass (12 new for images and the VisionNormalizer, against a fake client), plus the MongoDB tests. Not run: anything on macOS (the HEIC path was tested with an image converted by `pillow-heif`, not a real iPhone file).
+
+### 2026-11-03: is it easy to deploy?
+
+A clean-room run of the README in a fresh container (new venv, `docker compose up -d`, first write and find, then failure cases). Install took about 1.5 minutes plus downloads (venv 1.5 GB, MongoDB image 2 GB, model 1.2 GB). What it found and what changed:
+
+1. **Bug: MongoDB never started again after its container was recreated.** `mongodb-atlas-local` names its replica set after the container's hostname and stores that in the data volume. Compose gave the container a random hostname, so any recreation (changing the compose file, updating the image, `down` + `up`) left the node `REMOVED`, stuck in `health: starting`, with all notes unreachable. Fixed with `hostname: mongodb` in `docker-compose.yml`; checked that the database comes back healthy with its notes after `up --force-recreate`, `restart` and `down` + `up`. Databases created before this change can't be recovered this way (the README says how to start over).
+2. **MongoDB down → 30 s hang and a pymongo traceback.** Now a 5 s server-selection timeout and one line: "cannot reach MongoDB at … Start it … with: docker compose up -d".
+3. **`restart: unless-stopped`**, so MongoDB comes back after a reboot once Docker Desktop is running.
+4. **`NOTEBASE_DEVICE`** (`cpu` / `cuda` / `mps`) as an escape hatch for the embedding model, because MPS on Apple Silicon is untested.
+5. **README quickstart** split by platform: on macOS PyPI's PyTorch is right; on Linux without a GPU the CPU index avoids several GB of CUDA. It now states Python 3.10+ (macOS's system Python is too old), the disk space, the API key and what happens without one, and the 7 s per command from reloading the model ([#2](https://github.com/saltfish-len/Notebase/issues/2)).
+
+Seen but left alone: without an API key each write prints two fallback warnings (the README says to set `NOTEBASE_LLM=none` for quiet offline use), and Hugging Face prints an "unauthenticated requests" warning on every command unless `HF_TOKEN` or `HF_HUB_OFFLINE=1` is set.
+
+Still not tested on macOS: Docker Desktop, the arm64 MongoDB image (the manifest lists arm64), MPS, and a real iPhone HEIC file.
+

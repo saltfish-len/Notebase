@@ -117,7 +117,11 @@ def build_embedder(spec: str | None = None, dim: int | None = None):
         from notebase.blackbox.stubs import HashingEmbedder
 
         return HashingEmbedder(dim=dim or 256)
+    # cpu | cuda | mps; unset lets sentence-transformers pick (MPS on Apple Silicon)
+    device = os.environ.get("NOTEBASE_DEVICE") or None
     if spec in PRESETS:
-        return SentenceTransformerEmbedder.from_preset(spec, truncate_dim=dim)
+        return SentenceTransformerEmbedder.from_preset(spec, truncate_dim=dim, device=device)
     floor = float(os.environ.get("NOTEBASE_SIMILARITY_FLOOR", "0.3"))
-    return SentenceTransformerEmbedder(spec, similarity_floor=floor, truncate_dim=dim)
+    return SentenceTransformerEmbedder(
+        spec, similarity_floor=floor, truncate_dim=dim, device=device
+    )

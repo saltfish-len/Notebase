@@ -3,7 +3,12 @@
 #   export NOTEBASE_MONGO_URI="mongodb://localhost:27017/?directConnection=true"
 services:
   mongodb:
-    image: mongodb/mongodb-atlas-local:8.0
+    image: mongodb/mongodb-atlas-local:8.0  # amd64 and arm64 (Apple Silicon)
+    # The image names its replica set after the container's hostname and stores it in the
+    # data volume. A fixed hostname keeps the data usable when the container is recreated
+    # (image update, compose change, `down` + `up`); with a random one MongoDB never starts.
+    hostname: mongodb
+    restart: unless-stopped  # comes back after a reboot or a Docker restart
     ports:
       - "27017:27017"
     volumes:
