@@ -163,7 +163,8 @@ notebase/
 │   ├── base.py         # NoteStore contract
 │   ├── mongo.py        # MongoDB + Vector Search
 │   └── memory.py       # in-memory, for tests
-└── cli.py              # `notebase write` / `notebase find`
+├── importer.py         # `notebase import`: an Obsidian vault as many writes
+└── cli.py              # `notebase write` / `notebase find` / `notebase import`
 ```
 
 ## Quickstart
@@ -263,6 +264,30 @@ Things to know:
 * On Apple Silicon the model runs on the GPU (MPS) by default. This is **not tested**; if it errors or is slow,
   `export NOTEBASE_DEVICE=cpu`.
 
+### Import an Obsidian vault
+
+```bash
+notebase import ~/Documents/Obsidian/MyVault --dry-run   # list what would be imported
+notebase import ~/Documents/Obsidian/MyVault -x CLAUDE.md -x "Templates/*"
+```
+
+Import is *write* in a loop: each `.md` file becomes one capture (`source: import`) and is split into atomic
+notes like anything you type. Hidden folders (`.obsidian`, `.git`, `.trash`) are skipped; `-x` skips more by file
+name or path glob. What the vault already knows is kept:
+
+* **Frontmatter** is removed from the text. Its `tags` go on every note from the file, and `created` / `date`
+  (else the file's creation time) becomes the notes' date.
+* **The file name** goes on the first line, because in many vaults the name is the idea itself. A file with only
+  a name is a note too.
+* **`[[wikilinks]]`** become plain text, and each one becomes an edge (weight 0.9) between the note that mentions
+  it and the closest note of the linked file. Links to notes that don't exist are listed at the end.
+* **Embeds** (`![[diagram.png]]`) are attached, so images get alt text like any other write.
+
+Running it again is safe: files unchanged since their last import are skipped. A changed file is imported again
+as a new capture, and the notes from the old version stay (superseding is on the roadmap). So **set your API key
+before the first real import**: notes split without the LLM are not redone on a later run unless the file changes.
+With Haiku a file costs about two short calls; a 45-file vault took 39 s without the LLM.
+
 ### Configuration
 
 | Variable | Default | |
@@ -320,7 +345,7 @@ Open work is tracked in [GitHub issues](https://github.com/saltfish-len/Notebase
 - [ ] **v2: Better memory**
   - [ ] Superseding and versioning of thoughts
   - [ ] Recency and frequency weighting (often-recalled notes get stronger)
-  - [ ] Import from Markdown / Obsidian vaults (flattened into atomic notes)
+  - [x] Import from Markdown / Obsidian vaults (flattened into atomic notes; wikilinks become edges)
   - [ ] Voice and web-clip capture
 
 ---

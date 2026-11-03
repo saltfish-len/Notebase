@@ -49,6 +49,14 @@ class NoteStore(Protocol):
         self, terms: Iterable[str], k: int, tags: Iterable[str] = ()
     ) -> list[ScoredNote]: ...
 
+    def captures_from(self, uri: str) -> list[Capture]:
+        """Captures imported from ``uri`` (see ``Origin``), oldest first."""
+        ...
+
+    def notes_of_capture(self, capture_id: str) -> list[Note]:
+        """The atomic notes a capture was split into, in write order."""
+        ...
+
     def count(self) -> int: ...
 
     def top_tags(self, limit: int = 200) -> list[str]:

@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from notebase.blackbox import Atomizer, Embedder, Enricher, Normalizer, stubs
 from notebase.find import FindPipeline
-from notebase.models import Attachment, FindResult, WriteResult
+from notebase.models import Attachment, FindResult, Origin, WriteResult
 from notebase.storage.base import NoteStore
 from notebase.write import WritePipeline
 
@@ -59,13 +60,29 @@ class Notebase:
         self._find = find_pipeline
 
     def write(
-        self, text: str = "", source: str = "typed", attachments: list[Attachment] | None = None
+        self,
+        text: str = "",
+        source: str = "typed",
+        attachments: list[Attachment] | None = None,
+        *,
+        origin: Origin | None = None,
+        created_at: datetime | None = None,
     ) -> WriteResult:
-        """Put a thought in: typed text, files (images, audio, PDFs, ...), or both."""
-        return self._write.write(text, source, attachments)
+        """Put a thought in: typed text, files (images, audio, PDFs, ...), or both.
+
+        ``origin`` and ``created_at`` are set by importers (see ``notebase.importer``).
+        """
+        return self._write.write(
+            text, source, attachments, origin=origin, created_at=created_at
+        )
 
     def find(self, text: str, k: int = 5) -> FindResult:
         return self._find.find(text, k)
+
+    @property
+    def store(self) -> NoteStore:
+        """The store behind both verbs; importers use it to skip and link files."""
+        return self._write.store
 
     # ------------------------------------------------------------------ build
     @classmethod

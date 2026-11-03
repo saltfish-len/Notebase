@@ -1,4 +1,5 @@
-"""Command line: ``notebase write`` and ``notebase find``. Nothing else."""
+"""Command line: ``notebase write`` and ``notebase find``, plus ``notebase import``
+(write in a loop, for an Obsidian vault or a folder of Markdown)."""
 
 from __future__ import annotations
 
@@ -6,7 +7,10 @@ import argparse
 import json
 import logging
 import sys
+from pathlib import Path
+
 from notebase.app import Config, Notebase
+from notebase.importer import import_vault, parse_note, vault_files
 from notebase.jsonio import find_dict, note_dict
 from notebase.models import Attachment, FindResult, WriteResult
 from notebase.storage.base import EmbeddingMismatch
@@ -38,7 +42,24 @@ def main(argv: list[str] | None = None) -> int:
     f.add_argument("cue", help="anything that might bring it back; #tag filters by tag")
     f.add_argument("-k", type=int, default=5, help="number of seed notes")
 
+    i = sub.add_parser("import", help="write every Markdown file in a folder (Obsidian vault)")
+    i.add_argument("folder", help="the vault or folder to import")
+    i.add_argument(
+        "-x",
+        "--exclude",
+        action="append",
+        default=[],
+        metavar="GLOB",
+        help="skip files matching this glob (file name or path in the vault); repeat for several",
+    )
+    i.add_argument("--dry-run", action="store_true", help="list the files, write nothing")
+
     args = parser.parse_args(argv)
+    if args.verb == "import":
+        if not Path(args.folder).expanduser().is_dir():
+            parser.error(f"not a folder: {args.folder}")
+        if args.dry_run:
+            return _dry_run(args)
     attachments: list[Attachment] = []
     if args.verb == "write":
         try:
@@ -72,10 +93,50 @@ def _run(parser, args, config: Config, attachments: list[Attachment]) -> int:
             parser.error("nothing to write")
         result = app.write(text, source=args.source, attachments=attachments)
         _print_write(result, args.json)
+    elif args.verb == "import":
+        _run_import(app, args)
     else:
         result = app.find(args.cue, k=args.k)
         _print_find(result, args.json)
     return 0
+
+
+def _dry_run(args) -> int:
+    root = Path(args.folder).expanduser().resolve()
+    files = vault_files(root, args.exclude)
+    for p in files:
+        note = parse_note(p.read_text(encoding="utf-8", errors="replace"), p.stem)
+        extra = f"  +{len(note.embeds)} file(s)" if note.embeds else ""
+        print(f"{p.relative_to(root)}  ({len(note.text)} chars, {len(note.links)} links){extra}")
+    print(f"\n{len(files)} file(s) would be imported (nothing written)")
+    return 0
+
+
+def _run_import(app: Notebase, args) -> None:
+    marks = {"written": "+", "unchanged": "="}
+
+    def on_file(rel: str, status: str, notes: int) -> None:
+        if not args.json:
+            print(f"{marks[status]} {rel}" + (f"  -> {notes} note(s)" if notes else ""))
+
+    report = import_vault(app, args.folder, args.exclude, on_file=on_file)
+    if args.json:
+        summary = {
+            "written": report.written,
+            "unchanged": report.unchanged,
+            "notes": report.notes,
+            "wikilinks": report.wikilinks,
+            "unresolved": sorted(report.unresolved),
+        }
+        print(json.dumps(summary, ensure_ascii=False))
+        return
+    print(
+        f"\n{len(report.written)} file(s) written -> {report.notes} note(s); "
+        f"{len(report.unchanged)} unchanged; "
+        f"{report.wikilinks} wikilink edge(s)"
+    )
+    if report.unresolved:
+        print(f"links to notes that don't exist: {', '.join(sorted(report.unresolved))}")
 
 
 def _quiet_model_loading() -> None:

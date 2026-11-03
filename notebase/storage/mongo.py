@@ -26,7 +26,7 @@ from pymongo import ASCENDING, TEXT, MongoClient
 from pymongo.collection import Collection
 from pymongo.operations import SearchIndexModel
 
-from notebase.models import Capture, Entity, Link, Note, ScoredNote
+from notebase.models import Attachment, Capture, Entity, Link, Note, Origin, ScoredNote
 from notebase.storage.base import EmbeddingMismatch
 
 VECTOR_INDEX = "note_embedding"
@@ -70,6 +70,7 @@ class MongoNoteStore:
         self.notes.create_index([("content", TEXT), ("keywords", TEXT)], name="note_text")
         self.notes.create_index([("capture_id", ASCENDING)])
         self.notes.create_index([("links.to", ASCENDING)])
+        self.captures.create_index([("origin.uri", ASCENDING)])
 
         existing = {ix["name"]: ix for ix in self.notes.list_search_indexes()}
         if VECTOR_INDEX in existing:
@@ -182,6 +183,14 @@ class MongoNoteStore:
         )
         return [ScoredNote(_doc_to_note(d), d["_score"]) for d in cursor]
 
+    def captures_from(self, uri: str) -> list[Capture]:
+        cursor = self.captures.find({"origin.uri": uri}).sort("origin.imported_at", ASCENDING)
+        return [_doc_to_capture(d) for d in cursor]
+
+    def notes_of_capture(self, capture_id: str) -> list[Note]:
+        # natural order is insertion order for a collection that is never shrunk
+        return [_doc_to_note(d) for d in self.notes.find({"capture_id": capture_id})]
+
     def count(self) -> int:
         return self.notes.count_documents({})
 
@@ -215,5 +224,18 @@ def _doc_to_note(doc: dict[str, Any]) -> Note:
         entities=[Entity(**e) for e in doc.get("entities", [])],
         embedding=doc.get("embedding", []),
         links=[Link(**l) for l in doc.get("links", [])],
+        created_at=doc["created_at"],
+    )
+
+
+def _doc_to_capture(doc: dict[str, Any]) -> Capture:
+    origin = doc.get("origin")
+    return Capture(
+        id=doc["_id"],
+        text=doc["text"],
+        source=doc.get("source", "typed"),
+        attachments=[Attachment(**a) for a in doc.get("attachments", [])],
+        normalized=doc.get("normalized"),
+        origin=Origin(**origin) if origin else None,
         created_at=doc["created_at"],
     )

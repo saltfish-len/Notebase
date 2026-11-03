@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 from notebase.blackbox import Atomizer, Contextualizer, Embedder, Enricher, Linker, Normalizer
-from notebase.models import Attachment, Capture, Note, WriteResult
+from notebase.models import Attachment, Capture, Note, Origin, WriteResult, utcnow
 from notebase.storage.base import NoteStore
 
 
@@ -20,10 +21,25 @@ class WritePipeline:
     linker: Linker
 
     def write(
-        self, text: str, source: str = "typed", attachments: list[Attachment] | None = None
+        self,
+        text: str,
+        source: str = "typed",
+        attachments: list[Attachment] | None = None,
+        *,
+        origin: Origin | None = None,
+        created_at: datetime | None = None,
     ) -> WriteResult:
+        """``origin`` and ``created_at`` are for imports: the file it came from and
+        when the thought was first written down (defaults to now)."""
+        created_at = created_at or utcnow()
         # 1. capture: keep the raw input (typed text + file references) verbatim
-        capture = Capture(text=text, source=source, attachments=list(attachments or []))
+        capture = Capture(
+            text=text,
+            source=source,
+            attachments=list(attachments or []),
+            origin=origin,
+            created_at=created_at,
+        )
         self.store.save_capture(capture)
 
         # 2. normalize: attachments -> text, so every later box works on text
@@ -49,6 +65,7 @@ class WritePipeline:
                 tags=enrichment.tags,
                 entities=enrichment.entities,
                 embedding=embedding,
+                created_at=created_at,
             )
             # 7. link (against the store + earlier notes from this same capture)
             links = self.linker.link(note, self.store, siblings=list(notes))

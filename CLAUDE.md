@@ -15,6 +15,7 @@ spreading over a link graph). Read `README.md` for the idea and
 - `notebase/storage/`: `NoteStore` contract, MongoDB implementation, in-memory implementation for tests.
 - `notebase/app.py`: composition root and `Config` (all `NOTEBASE_*` env vars).
 - `notebase/server.py` + `notebase/web/index.html`: `notebase-web`, the two verbs over HTTP (stdlib only) and the graph UI. `notebase/jsonio.py` holds the JSON shapes the CLI and the server share.
+- `notebase/importer.py`: `notebase import`, an Obsidian vault as a loop of writes (frontmatter tags and dates, embeds as attachments, wikilinks as edges, skip unchanged files by `Capture.origin`).
 - `docs/DEVLOG.md`: decisions and session history. **Add an entry when you finish a piece of work.**
 - Backlog: GitHub issues on `saltfish-len/Notebase`.
 

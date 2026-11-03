@@ -70,6 +70,13 @@ class InMemoryNoteStore:
         scored.sort(key=lambda s: s.score, reverse=True)
         return scored[:k]
 
+    def captures_from(self, uri: str) -> list[Capture]:
+        found = [c for c in self.captures.values() if c.origin and c.origin.uri == uri]
+        return sorted(found, key=lambda c: c.origin.imported_at)
+
+    def notes_of_capture(self, capture_id: str) -> list[Note]:
+        return [n for n in self.notes.values() if n.capture_id == capture_id]
+
     def count(self) -> int:
         return len(self.notes)
 
