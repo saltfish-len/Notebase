@@ -15,6 +15,7 @@ and the **Normalizer** (images only), **Atomizer** and **Enricher**
 flowchart LR
     subgraph Client
         CLI["CLI<br/>notebase write / find"]
+        MCP["MCP server (mcp_server.py)<br/>write · write_batch · import_files · find"]
     end
 
     subgraph App["Notebase (app.py)"]
@@ -33,7 +34,7 @@ flowchart LR
         MEM[("InMemory<br/>tests")]
     end
 
-    CLI --> WP & FP
+    CLI & MCP --> WP & FP
     WP --> N
     FP --> QI
     WP & FP --> Storage

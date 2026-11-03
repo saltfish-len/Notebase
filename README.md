@@ -161,7 +161,8 @@ notebase/
 │   ├── base.py         # NoteStore contract
 │   ├── mongo.py        # MongoDB + Vector Search
 │   └── memory.py       # in-memory, for tests
-└── cli.py              # `notebase write` / `notebase find`
+├── cli.py              # `notebase write` / `notebase find`
+└── mcp_server.py       # the same two verbs as MCP tools, for Claude Code and other LLM clients
 ```
 
 ## Quickstart
@@ -242,6 +243,42 @@ Things to know:
 * On Apple Silicon the model runs on the GPU (MPS) by default. This is **not tested**; if it errors or is slow,
   `export NOTEBASE_DEVICE=cpu`.
 
+### Use it from Claude Code (or another MCP client)
+
+`notebase-mcp` is an [MCP](https://modelcontextprotocol.io) server over stdio, so an LLM assistant can write
+and find for you, and import notes in bulk. Install the extra and register the server:
+
+```bash
+pip install -e ".[mcp]"
+```
+
+```bash
+claude mcp add notebase --scope user -- "$(which notebase-mcp)"
+```
+
+Use the full path from your venv, as above, so the client doesn't need the venv activated. Pass settings with
+`-e`, for example `-e NOTEBASE_LLM=none`. Other clients take the same command in their JSON config:
+
+```json
+{ "mcpServers": { "notebase": { "command": "/path/to/Notebase/.venv/bin/notebase-mcp" } } }
+```
+
+| Tool | What it does |
+|---|---|
+| `write` | one thought, as text and/or file paths to attach |
+| `write_batch` | up to 50 thoughts in one call; each is its own capture, and a failed item doesn't stop the others |
+| `import_files` | Markdown/text files and images from paths or folders on this machine (hidden folders like `.obsidian` skipped, text over 200 KB skipped). The files are read by the server, so their contents don't go through the assistant's context. `dry_run` lists what would be imported; 50 files per call, continue with `next_offset` |
+| `find` | a cue → clusters of related notes, seeds marked |
+
+Then ask in plain words, for example "import my notes in ~/Documents/journal into Notebase" or "what did I note
+about sleep?". These are batch forms of *write*, not new verbs: imported text goes through the same pipeline, so
+each file is split into atomic notes, tagged and linked. Things to know:
+
+* The server loads the embedding model on the first tool call and keeps it, so only the first call pays the ~7 s.
+* Importing the same files twice creates duplicates; there is no de-duplication yet.
+* With the LLM on, each imported file costs one Atomizer and one Enricher call (about 3 s and $0.0004 with Haiku, from
+  the per-call figures in [docs/llm.md](docs/llm.md); bulk import itself is not measured yet).
+
 ### Configuration
 
 | Variable | Default | |
@@ -297,7 +334,9 @@ Open work is tracked in [GitHub issues](https://github.com/saltfish-len/Notebase
 - [ ] **v2: Better memory**
   - [ ] Superseding and versioning of thoughts
   - [ ] Recency and frequency weighting (often-recalled notes get stronger)
-  - [ ] Import from Markdown / Obsidian vaults (flattened into atomic notes)
+  - [x] MCP server: write, batch write, bulk file import and find from Claude Code or any MCP client
+  - [ ] Import from Markdown / Obsidian vaults (flattened into atomic notes): basic file import works through
+        `import_files`; still missing: de-duplication on re-import, front matter, wikilinks as links
   - [ ] Voice and web-clip capture
 
 ---

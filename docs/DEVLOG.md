@@ -19,6 +19,7 @@ in GitHub issues.
 | D10 | **Files become text in a Normalizer box before the Atomizer**, not a multimodal embedding | Keeps one text embedding space (D6) and every later box unchanged; a real Normalizer (Claude vision, local speech-to-text, PDF and web extraction) can replace the stub behind the same Protocol | ✅ v0 stub |
 | D11 | **Captures store file references (path, size, SHA-256), not bytes**, for now | Enough for the file-name stub, which never reads the file. A real Normalizer that must re-read files later will need the bytes kept (e.g. GridFS) | ⚠️ revisit with the real Normalizer |
 | D12 | **Image alt text on Claude Haiku 5.5** (effort `low`, one call per image, typed text as context); other files keep the file-name marker | Measured on 7 images (text-heavy synthetic + real photos, one HEIC): Haiku 20/21 and 19/21 over 2 × 3 runs at $0.25 per 1000 images, 1.5 s p50; Sonnet 7/7 at $5.11. See `docs/llm.md` | ✅ measured |
+| D13 | **MCP server as a second front end** (`notebase-mcp`, stdio), with `write_batch` and `import_files` as batch forms of *write* | Lets Claude Code or any MCP client write, find and bulk-import for the user without a new verb. `import_files` reads files on the server, so a folder import costs the assistant no tokens for file contents. A batch keeps going past a bad item but stops at once when MongoDB is down or the embedding model doesn't match, since every item would fail the same way | ✅ |
 
 ## Sessions
 
@@ -78,3 +79,11 @@ Seen but left alone: without an API key each write prints two fallback warnings 
 
 Still not tested on macOS: Docker Desktop, the arm64 MongoDB image (the manifest lists arm64), MPS, and a real iPhone HEIC file.
 
+### 2026-11-03: MCP server for Claude Code and other LLM clients
+
+1. **`notebase/mcp_server.py`, `notebase-mcp`** (D13): four tools, `write`, `write_batch`, `import_files`, `find`. The logic is in `NotebaseTools`, plain methods testable without the `mcp` package; `build_server` registers them. `mcp` is an optional extra (`pip install -e ".[mcp]"`); the server works with the SDK's 2.x `MCPServer` and 1.x `FastMCP`.
+2. **Lazy app**: the app (embedding model, MongoDB connection) is built on the first tool call, so the client sees the server start at once. After that the model stays loaded, unlike the CLI's ~7 s per command.
+3. **`import_files`**: files and folders → one capture per text file (`.md`, `.txt`, `.org`, `.rst`, ...) and one per image, `source="import"`. Hidden paths are skipped (`.obsidian`, `.git`), text over 200 KB is skipped, an untitled file gets its file name as a heading so the Atomizer knows what a bare list is about. Sorted order, 50 per call with `offset` / `next_offset`, so one call stays inside client timeouts; `dry_run` lists the files.
+4. **Errors reach the assistant**: the SDK hides the text of unexpected exceptions from the client, so tool errors are re-raised as `ToolError` with the reason. "Cannot reach MongoDB … docker compose up -d" stops a batch on the first item instead of timing out 5 s per item.
+
+State at the end: 52 fast tests pass (10 new, including tool registration through the real SDK; the new ones also pass on mcp 1.30), and with MongoDB 55 pass. End to end over real stdio with the SDK's client, on mcp 2.3 and 1.30 (MongoDB, hashing embedder, `NOTEBASE_LLM=none`): list tools, `write_batch` of 2, `find` hit the right note as the seed; with MongoDB stopped, both tools returned the "cannot reach MongoDB" message. Not run: the real Qwen3 embedder or live Claude through the server (same pipeline code as the CLI), and a client other than the SDK's (Claude Code itself was not driven in this session). Left for later: de-duplication on re-import, Obsidian front matter and wikilinks.
