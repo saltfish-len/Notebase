@@ -26,24 +26,25 @@ Notebase moves all organization to the system:
 
 ### ✍️ Write
 
-You type, paste, or dictate anything: a half-formed idea, a meeting dump, a quote, a link with a comment. You don't pick a title, folder, or tag.
+You type, paste, or dictate anything: a half-formed idea, a meeting dump, a quote, a link with a comment. You can attach files too, such as a photo of a whiteboard, a voice memo or a PDF. You don't pick a title, folder, or tag.
 
 The system then processes the input:
 
 1. **Capture.** The raw input is stored unchanged, so nothing is ever lost.
-2. **Atomize.** The input is split into *atomic notes*, each holding one self-contained idea. A long brain-dump might become five notes. A short thought stays as one.
-3. **Contextualize.** Each atomic note is rewritten just enough to be understood on its own, for example by resolving "it" and "that meeting" from the surrounding text, while keeping your voice.
-4. **Enrich.** Each note gets:
+2. **Normalize.** Attached files are turned into text, so the steps below work on words. Images get alt text that describes their content, including the important text in them (whiteboards, receipts, screenshots). Other files are described only by their file name for now; transcripts and PDF text come later.
+3. **Atomize.** The input is split into *atomic notes*, each holding one self-contained idea. A long brain-dump might become five notes. A short thought stays as one.
+4. **Contextualize.** Each atomic note is rewritten just enough to be understood on its own, for example by resolving "it" and "that meeting" from the surrounding text, while keeping your voice.
+5. **Enrich.** Each note gets:
    - **Keywords**: terms you might use later to look for it, including synonyms you didn't write
    - **Tags**: broad topic labels, generated and normalized against existing tags
    - **Entities**: people, places, projects, books, URLs
    - **Metadata**: creation time, source (typed, pasted, voice, web clip), and a link back to the raw capture
-5. **Embed.** Each note is turned into a vector for semantic search.
-6. **Link.** The new note is compared with existing notes, and weighted associative edges are created to its nearest neighbours. These edges are what make up the graph.
-7. **Store.** Notes, vectors, and edges are saved to a store that supports semantic search.
+6. **Embed.** Each note is turned into a vector for semantic search.
+7. **Link.** The new note is compared with existing notes, and weighted associative edges are created to its nearest neighbours. These edges are what make up the graph.
+8. **Store.** Notes, vectors, and edges are saved to a store that supports semantic search.
 
 ```
-raw input ──► capture ──► atomize ──► contextualize ──► enrich ──► embed ──► link ──► store
+raw input ──► capture ──► normalize ──► atomize ──► contextualize ──► enrich ──► embed ──► link ──► store
                 │                                                                       │
                 └────────────────────── raw text kept for provenance ───────────────────┘
 ```
@@ -151,9 +152,10 @@ notebase/
 ├── find.py             # FindPipeline  (orchestration only)
 ├── models.py           # Capture, Note, Link, Query, FindResult, ...
 ├── blackbox/
-│   ├── interfaces.py   # the 10 black-box Protocols
+│   ├── interfaces.py   # the 11 black-box Protocols
 │   ├── embedders.py    # real Embedder (Qwen3 via sentence-transformers)
-│   ├── llm.py          # real Atomizer + Enricher (Claude)
+│   ├── llm.py          # real Normalizer (image alt text), Atomizer, Enricher (Claude)
+│   ├── images.py       # shrink/convert images for the API (HEIC, TIFF, large photos)
 │   └── stubs.py        # placeholder implementations
 ├── storage/
 │   ├── base.py         # NoteStore contract
@@ -164,10 +166,36 @@ notebase/
 
 ## Quickstart
 
+You need **Docker** (Docker Desktop on macOS; the MongoDB image runs on Intel and Apple Silicon), **Python 3.10+**
+(on macOS the system Python is too old: `brew install python`) and about 5 GB of disk: 2 GB for the MongoDB image,
+1.2 GB for the embedding model, about 1.5 GB for PyTorch and the other Python packages. The steps below took about
+2 minutes in a fresh Linux container, plus the downloads. **Not tested on macOS yet.**
+
 ```bash
-docker compose up -d          # MongoDB with Vector Search (mongodb-atlas-local)
-pip install torch --index-url https://download.pytorch.org/whl/cpu   # CPU-only torch (skip if you have a GPU)
-pip install -e ".[dev]"
+git clone https://github.com/saltfish-len/Notebase.git && cd Notebase
+docker compose up -d          # MongoDB with Vector Search; restarts with Docker from now on
+python3 -m venv .venv && source .venv/bin/activate
+```
+
+On **macOS**, install as is (PyPI's PyTorch already supports Apple Silicon):
+
+```bash
+pip install -e .
+```
+
+On **Linux** without an NVIDIA GPU, install the CPU build of PyTorch first, or pip downloads several GB of CUDA:
+
+```bash
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+pip install -e .
+```
+
+Then add a Claude API key from the [Claude Console](https://platform.claude.com/). Without one, everything still
+works, but notes are split by paragraph, keywords are plain word counts and images are described only by their file
+name (each write prints a warning; `export NOTEBASE_LLM=none` turns the LLM off quietly).
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
 ```bash
@@ -187,10 +215,32 @@ notebase find "怎么记得更牢"
 ★ marks a seed note the query hit directly. · marks a note reached by association. `--json` gives the full
 `FindResult` (nodes, edges, clusters) for a graph UI.
 
+```bash
+notebase write "Sprint plan we agreed on." -a ~/Desktop/whiteboard_sprint_plan.jpg
+```
+
+`-a` attaches a file (repeat it for several). An image becomes alt text that describes it, written by
+Claude, for example `[image: Whiteboard with the Q4 roadmap: 1. cut export… (IMG_4471.jpg)]`, so you can find it
+later by what it showed. JPEG, PNG, GIF, WebP, HEIC (iPhone), TIFF and BMP work; large photos are shrunk
+before upload. Other files (audio, PDF, ...) are described only by their file name for now. Only a reference to
+each file is kept, not a copy.
+
 The first run downloads the embedding model, [Qwen3-Embedding-0.6B](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B)
-(about 1.2 GB). It runs locally on CPU, CUDA or Apple Silicon, so notes never leave your machine. It works across
-Chinese and English, so a cue in one language finds notes written in the other. See
-[docs/embedding.md](docs/embedding.md) for why this model was chosen.
+(about 1.2 GB). It runs locally on CPU, CUDA or Apple Silicon, and works across Chinese and English, so a cue in one
+language finds notes written in the other. See [docs/embedding.md](docs/embedding.md) for why this model was chosen.
+Embedding never sends notes anywhere, but the LLM boxes send text and attached images to the Claude API;
+`NOTEBASE_LLM=none` keeps everything on your machine.
+
+Things to know:
+
+* Each `notebase` command loads the model again, so it takes about 7 s (measured on a cloud container CPU), even for a find. A
+  long-running server will fix this ([#2](https://github.com/saltfish-len/Notebase/issues/2)).
+* If MongoDB isn't running, commands stop with "cannot reach MongoDB"; run `docker compose up -d` in the folder.
+* A database created with an older `docker-compose.yml` (before `hostname: mongodb`) won't start after the
+  container is recreated. Early versions only: `docker compose down -v && docker compose up -d` starts over
+  with an empty database.
+* On Apple Silicon the model runs on the GPU (MPS) by default. This is **not tested**; if it errors or is slow,
+  `export NOTEBASE_DEVICE=cpu`.
 
 ### Configuration
 
@@ -199,11 +249,12 @@ Chinese and English, so a cue in one language finds notes written in the other. 
 | `NOTEBASE_MONGO_URI` | `mongodb://localhost:27017/?directConnection=true` | |
 | `NOTEBASE_DB` | `notebase` | one database = one embedding model |
 | `NOTEBASE_EMBEDDER` | `qwen3-0.6b` | preset (`qwen3-0.6b`, `bge-m3`, `minilm-multilingual`), `hashing` (offline stub), or any sentence-transformers model id |
+| `NOTEBASE_DEVICE` | auto | `cpu`, `cuda` or `mps` for the embedding model; auto picks CUDA, then MPS, then CPU |
 | `NOTEBASE_EMBED_DIM` | model native | truncate Matryoshka models, e.g. `256` for Qwen3 |
 | `NOTEBASE_SIMILARITY_FLOOR` | `0.3` | only for custom model ids: the cosine an unrelated pair typically gets |
-| `NOTEBASE_LLM` | `anthropic` | `anthropic`: LLM Atomizer + Enricher on Claude; `none`: stubs only, fully offline |
+| `NOTEBASE_LLM` | `anthropic` | `anthropic`: Normalizer (image alt text), Atomizer and Enricher on Claude; `none`: stubs only, fully offline |
 | `NOTEBASE_LLM_MODEL` | `claude-haiku-5-5` | model for both LLM boxes |
-| `NOTEBASE_ATOMIZER_MODEL` / `NOTEBASE_ENRICHER_MODEL` | (unset) | per-box override, e.g. atomize with Sonnet, enrich with Haiku |
+| `NOTEBASE_NORMALIZER_MODEL` / `NOTEBASE_ATOMIZER_MODEL` / `NOTEBASE_ENRICHER_MODEL` | (unset) | per-box override, e.g. atomize with Sonnet, enrich with Haiku |
 | `ANTHROPIC_API_KEY` (or `CLAUDE_API_KEY`) | (unset) | Claude API key from the [Claude Console](https://platform.claude.com/) |
 
 Without a working API key, writes still succeed: the LLM boxes log a warning and fall back to their stubs.
@@ -235,6 +286,8 @@ Open work is tracked in [GitHub issues](https://github.com/saltfish-len/Notebase
   - [x] Real embedding model (Qwen3-Embedding-0.6B, local)
   - [x] LLM Atomizer + Enricher (Claude Haiku 5.5; see [docs/llm.md](docs/llm.md))
   - [x] Measure Haiku vs Sonnet for the LLM boxes: Haiku is enough after prompt fixes ([#1](https://github.com/saltfish-len/Notebase/issues/1))
+  - [x] Normalizer v0: attach files to a write; images get alt text from Claude (Haiku 5.5), other files a file-name marker
+  - [ ] Normalizer: audio transcripts, PDF and web-page text; keep file bytes
   - [ ] Find-side boxes: Labeler, Clusterer, Spreader, QueryInterpreter ([#4](https://github.com/saltfish-len/Notebase/issues/4))
   - [ ] Chinese keyword search, vector index lag ([#6](https://github.com/saltfish-len/Notebase/issues/6))
   - [ ] Re-embed when switching embedding models ([#5](https://github.com/saltfish-len/Notebase/issues/5))

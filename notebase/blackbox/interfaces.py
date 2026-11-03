@@ -4,7 +4,7 @@ Every core algorithm of Notebase sits behind one of these interfaces. The
 pipelines in ``notebase.write`` / ``notebase.find`` only orchestrate them, so
 each box can be swapped (stub -> heuristic -> LLM / ML model) independently.
 
-Write:  Atomizer -> Contextualizer -> Enricher -> Embedder -> Linker
+Write:  Normalizer -> Atomizer -> Contextualizer -> Enricher -> Embedder -> Linker
 Find:   QueryInterpreter -> Retriever -> Spreader -> Clusterer -> Labeler
 """
 
@@ -18,8 +18,20 @@ from notebase.storage.base import NoteStore
 # ---------------------------------------------------------------------- write
 
 
+class Normalizer(Protocol):
+    """Turn a capture and its attachments into one text-only version.
+
+    Everything after this box works on text, so this is where images, audio,
+    PDFs and links become words (alt text, transcripts, extracted text). The
+    result keeps what the user typed and says, for each attachment, what it is,
+    so the notes made from it can still be found by what the file showed.
+    """
+
+    def normalize(self, capture: Capture) -> str: ...
+
+
 class Atomizer(Protocol):
-    """Split a raw capture into fragments that each hold one idea."""
+    """Split a capture's ``content`` into fragments that each hold one idea."""
 
     def atomize(self, capture: Capture) -> list[str]: ...
 

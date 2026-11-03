@@ -13,18 +13,62 @@ import re
 from collections import Counter, defaultdict
 
 from notebase.blackbox.interfaces import calibrate
-from notebase.models import Capture, Enrichment, Entity, Link, Note, Query, ScoredNote
+from notebase.models import Attachment, Capture, Enrichment, Entity, Link, Note, Query, ScoredNote
 from notebase.storage.base import NoteStore
 from notebase.text import tokenize
 
 # ---------------------------------------------------------------------- write
 
 
+class FilenameAltTextNormalizer:
+    """STUB: each attachment becomes a naive alt text made from its file name.
+
+    ``whiteboard_meeting-notes.jpg`` becomes
+    ``[image: whiteboard meeting notes (whiteboard_meeting-notes.jpg)]``. The
+    markers go on new lines right after the last paragraph of the typed text,
+    so a paragraph split keeps a caption and its files in one note. With no
+    typed text, each attachment is its own paragraph (and its own note).
+    The file's content is never looked at.
+    """
+
+    def normalize(self, capture: Capture) -> str:
+        return place_markers(capture.text, [alt_text_marker(a) for a in capture.attachments])
+
+
+def place_markers(text: str, markers: list[str]) -> str:
+    """Typed text, then one marker per line; markers alone are one paragraph each."""
+    text = text.strip()
+    if not markers:
+        return text
+    if not text:
+        return "\n\n".join(markers)
+    return text + "\n" + "\n".join(markers)
+
+
+_FILENAME_SEPARATORS = re.compile(r"[\s_\-.]+")
+
+
+def alt_text_marker(attachment: Attachment, description: str | None = None) -> str:
+    """``[kind: description (file name)]``.
+
+    Without a ``description``, it is guessed from the file name.
+    """
+    if description:
+        # one line, and no "]" that would end the marker early
+        description = " ".join(description.replace("]", ")").replace("[", "(").split())
+        return f"[{attachment.kind}: {description} ({attachment.name})]"
+    stem = attachment.name.rsplit(".", 1)[0] if "." in attachment.name else attachment.name
+    words = " ".join(w for w in _FILENAME_SEPARATORS.split(stem) if w)
+    if words and words != attachment.name:
+        return f"[{attachment.kind}: {words} ({attachment.name})]"
+    return f"[{attachment.kind}: {attachment.name}]"
+
+
 class ParagraphAtomizer:
     """STUB: one paragraph (blank-line separated) = one atomic note."""
 
     def atomize(self, capture: Capture) -> list[str]:
-        parts = re.split(r"\n\s*\n", capture.text.strip())
+        parts = re.split(r"\n\s*\n", capture.content.strip())
         return [p.strip() for p in parts if p.strip()]
 
 

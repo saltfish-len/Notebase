@@ -8,10 +8,10 @@ spreading over a link graph). Read `README.md` for the idea and
 ## Where things are
 
 - `notebase/write.py`, `notebase/find.py`: the pipelines. They only orchestrate.
-- `notebase/blackbox/interfaces.py`: the 10 black-box Protocols. All algorithmic decisions live behind these.
+- `notebase/blackbox/interfaces.py`: the 11 black-box Protocols. All algorithmic decisions live behind these.
   - `stubs.py`: naive placeholder for every box (also the fallback when a real box fails).
   - `embedders.py`: real Embedder (Qwen3-Embedding-0.6B, local). See `docs/embedding.md`.
-  - `llm.py`: real Atomizer and Enricher (Claude, Haiku 5.5 by default). See `docs/llm.md`.
+  - `llm.py`: real Normalizer (image alt text), Atomizer and Enricher (Claude, Haiku 5.5 by default). See `docs/llm.md`.
 - `notebase/storage/`: `NoteStore` contract, MongoDB implementation, in-memory implementation for tests.
 - `notebase/app.py`: composition root and `Config` (all `NOTEBASE_*` env vars).
 - `docs/DEVLOG.md`: decisions and session history. **Add an entry when you finish a piece of work.**

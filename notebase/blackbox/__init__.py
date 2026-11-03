@@ -6,12 +6,14 @@ from notebase.blackbox.interfaces import (
     Enricher,
     Labeler,
     Linker,
+    Normalizer,
     QueryInterpreter,
     Retriever,
     Spreader,
 )
 
 __all__ = [
+    "Normalizer",
     "Atomizer",
     "Contextualizer",
     "Enricher",

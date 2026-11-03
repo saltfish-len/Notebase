@@ -40,7 +40,8 @@ class MongoNoteStore:
         embedding_dim: int = 256,
         client: MongoClient | None = None,
     ) -> None:
-        self.client = client or MongoClient(uri)
+        # fail in seconds, not pymongo's default 30 s, when MongoDB isn't running
+        self.client = client or MongoClient(uri, serverSelectionTimeoutMS=5000)
         self.db = self.client[database]
         self.captures: Collection = self.db["captures"]
         self.notes: Collection = self.db["notes"]

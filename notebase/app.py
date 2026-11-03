@@ -5,9 +5,9 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 
-from notebase.blackbox import Atomizer, Embedder, Enricher, stubs
+from notebase.blackbox import Atomizer, Embedder, Enricher, Normalizer, stubs
 from notebase.find import FindPipeline
-from notebase.models import FindResult, WriteResult
+from notebase.models import Attachment, FindResult, WriteResult
 from notebase.storage.base import NoteStore
 from notebase.write import WritePipeline
 
@@ -29,7 +29,8 @@ class Config:
     embedder: str | None = field(default_factory=lambda: os.environ.get("NOTEBASE_EMBEDDER"))
     # optional: truncate Matryoshka models (e.g. Qwen3 1024 -> 256) / size of hashing stub
     embedding_dim: int | None = field(default_factory=lambda: _env_int("NOTEBASE_EMBED_DIM"))
-    # "anthropic" (default): LLM Atomizer + Enricher on Claude; "none": stubs only
+    # "anthropic" (default): Normalizer (image alt text), Atomizer and Enricher on
+    # Claude; "none": stubs only, nothing leaves the machine
     llm: str = field(default_factory=lambda: os.environ.get("NOTEBASE_LLM", "anthropic"))
     llm_model: str = field(
         default_factory=lambda: os.environ.get("NOTEBASE_LLM_MODEL", "claude-haiku-5-5")
@@ -41,6 +42,9 @@ class Config:
     enricher_model: str | None = field(
         default_factory=lambda: os.environ.get("NOTEBASE_ENRICHER_MODEL")
     )
+    normalizer_model: str | None = field(
+        default_factory=lambda: os.environ.get("NOTEBASE_NORMALIZER_MODEL")
+    )
 
 
 class Notebase:
@@ -50,8 +54,11 @@ class Notebase:
         self._write = write_pipeline
         self._find = find_pipeline
 
-    def write(self, text: str, source: str = "typed") -> WriteResult:
-        return self._write.write(text, source)
+    def write(
+        self, text: str = "", source: str = "typed", attachments: list[Attachment] | None = None
+    ) -> WriteResult:
+        """Put a thought in: typed text, files (images, audio, PDFs, ...), or both."""
+        return self._write.write(text, source, attachments)
 
     def find(self, text: str, k: int = 5) -> FindResult:
         return self._find.find(text, k)
@@ -64,6 +71,7 @@ class Notebase:
         embedder: Embedder,
         atomizer: Atomizer | None = None,
         enricher: Enricher | None = None,
+        normalizer: Normalizer | None = None,
     ) -> "Notebase":
         """Wire the pipelines; any box not given falls back to its stub."""
         store.bind_embedding(embedder.name, embedder.dim)
@@ -71,6 +79,7 @@ class Notebase:
         return cls(
             WritePipeline(
                 store=store,
+                normalizer=normalizer or stubs.FilenameAltTextNormalizer(),
                 atomizer=atomizer or stubs.ParagraphAtomizer(),
                 contextualizer=stubs.IdentityContextualizer(),
                 enricher=enricher or stubs.FrequencyEnricher(),
@@ -103,11 +112,17 @@ class Notebase:
         store.bind_embedding(embedder.name, embedder.dim)
         store.ensure_indexes()
 
-        atomizer = enricher = None
+        atomizer = enricher = normalizer = None
         if config.llm == "anthropic":
-            from notebase.blackbox.llm import LLMAtomizer, LLMEnricher, build_client
+            from notebase.blackbox.llm import (
+                LLMAtomizer,
+                LLMEnricher,
+                VisionNormalizer,
+                build_client,
+            )
 
             client = build_client()
+            normalizer = VisionNormalizer(client, model=config.normalizer_model or config.llm_model)
             atomizer = LLMAtomizer(client, model=config.atomizer_model or config.llm_model)
             enricher = LLMEnricher(
                 client,
@@ -116,4 +131,6 @@ class Notebase:
             )
         elif config.llm != "none":
             raise ValueError(f"NOTEBASE_LLM must be 'anthropic' or 'none', not {config.llm!r}")
-        return cls.create(store, embedder, atomizer=atomizer, enricher=enricher)
+        return cls.create(
+            store, embedder, atomizer=atomizer, enricher=enricher, normalizer=normalizer
+        )

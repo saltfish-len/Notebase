@@ -8,7 +8,14 @@ version = "0.0.1"
 description = "A note-taking app with two verbs: write and find."
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = ["pymongo>=4.7", "sentence-transformers>=3.0", "numpy", "anthropic>=2.0"]
+dependencies = [
+    "pymongo>=4.7",
+    "sentence-transformers>=3.0",
+    "numpy",
+    "anthropic>=2.0",
+    "Pillow>=10",
+    "pillow-heif>=0.18",  # iPhone photos (HEIC)
+]
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]

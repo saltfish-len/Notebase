@@ -80,3 +80,17 @@ def test_calibration_makes_thresholds_model_independent():
     assert calibrate(1.00, floor=0.30) == 1.0
     assert calibrate(0.10, floor=0.30) == 0.0  # clipped
     assert calibrate(0.65, floor=0.30) == pytest.approx(0.5)
+
+
+def test_cli_explains_when_mongodb_is_not_running(monkeypatch, capsys):
+    from pymongo.errors import ServerSelectionTimeoutError
+
+    from notebase import cli
+
+    def unreachable(config):
+        raise ServerSelectionTimeoutError("localhost:27017: Connection refused")
+
+    monkeypatch.setattr(cli.Notebase, "from_config", unreachable)
+    assert cli.main(["find", "sleep"]) == 2
+    err = capsys.readouterr().err
+    assert "cannot reach MongoDB" in err and "docker compose up -d" in err

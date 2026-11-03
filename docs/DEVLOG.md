@@ -16,6 +16,9 @@ in GitHub issues.
 | D7 | **Atomizer and Enricher on Claude Haiku 5.5** (Atomizer effort `medium`, Enricher `low`); Enricher batched per capture; existing tag vocabulary passed in; zh↔en keywords | Measured against Sonnet 5.5: after four prompt fixes Haiku passes 10/10, 9/10 and 9/10 eval cases with 0 fallbacks, at $0.36 vs $7.14 per 1000 writes and 1.5 s vs 2.2 s p50 per call. Raising the Atomizer to `high` did not help. See [docs/llm.md](llm.md) | ✅ measured: [#1](https://github.com/saltfish-len/Notebase/issues/1) |
 | D8 | **Writes never fail because of a model**: the raw capture is saved first, and any LLM error, refusal or bad output falls back to the stub | A memory app must not lose what the user wrote | ✅ |
 | D9 | **Contextualizer stays the identity stub** | The LLM Atomizer already makes notes self-contained, so a separate call would cost more for little gain | ✅ [#1](https://github.com/saltfish-len/Notebase/issues/1): pronouns and "it says" attributions were resolved on Haiku once the prompt asked for attribution explicitly |
+| D10 | **Files become text in a Normalizer box before the Atomizer**, not a multimodal embedding | Keeps one text embedding space (D6) and every later box unchanged; a real Normalizer (Claude vision, local speech-to-text, PDF and web extraction) can replace the stub behind the same Protocol | ✅ v0 stub |
+| D11 | **Captures store file references (path, size, SHA-256), not bytes**, for now | Enough for the file-name stub, which never reads the file. A real Normalizer that must re-read files later will need the bytes kept (e.g. GridFS) | ⚠️ revisit with the real Normalizer |
+| D12 | **Image alt text on Claude Haiku 5.5** (effort `low`, one call per image, typed text as context); other files keep the file-name marker | Measured on 7 images (text-heavy synthetic + real photos, one HEIC): Haiku 20/21 and 19/21 over 2 × 3 runs at $0.25 per 1000 images, 1.5 s p50; Sonnet 7/7 at $5.11. See `docs/llm.md` | ✅ measured |
 
 ## Sessions
 
@@ -40,4 +43,38 @@ State at the end: 27 tests pass, including the MongoDB integration tests and the
 5. **Decision**: Haiku for both boxes, defaults unchanged. Residual weaknesses are documented in `docs/llm.md`: occasional translation, tag drift between neighbouring topics, and inferred entities. `NOTEBASE_ATOMIZER_MODEL=claude-sonnet-5-5` is the documented escape hatch.
 
 Setup note: in this container, `pytest` on `PATH` belongs to a separate uv tool environment and cannot import `notebase`. Use `python -m pytest`.
+
+
+### 2026-11-03: Normalizer v0, files as input to *write*
+
+1. **New black box: Normalizer** (`Capture -> str`, before the Atomizer). Multimodal input goes through *write*; there is no new verb. Every box after it still works on text (D10).
+2. **v0 stub, `FilenameAltTextNormalizer`**: each attachment becomes `[kind: words from the file name (file name)]`, placed on its own line right after the typed text, so the paragraph stub keeps a caption and its files in one note. With no typed text, each file becomes its own note. The file is never opened.
+3. **Data model**: `Attachment` (name, MIME type, path, size, SHA-256) on `Capture.attachments`. `Capture.text` stays what the user typed, `Capture.normalized` holds the Normalizer's output, and the boxes read `Capture.content`. The capture is saved before normalizing and again after. Only file **references** are stored, not bytes (D11).
+4. **CLI**: `notebase write [text] -a FILE [-a FILE ...]`. A missing file is a usage error before anything is written.
+5. **Atomizer prompt**: one rule for file markers. The first wording split a caption that already described its image into caption + bare marker, 3 of 3 runs. The rewrite ("a file is part of the idea it was attached to... a marker is a note of its own only when the capture has no text") passed a 5-case marker check 15/15, and the eval, now with 4 file cases and a `markers_once` check, passed 14/14, 14/14 and 13/14 on Haiku with 0 fallbacks (the one failure: too many keywords on `brain-dump-zh`, a known Enricher quirk). See `docs/llm.md`.
+
+State at the end: 29 fast tests pass; the MongoDB tests (3, including a capture round trip with attachments) pass. End to end through the CLI (MongoDB, live Haiku, hashing embedder): a captioned image and a file-only audio write each gave one note, and `find` hit them by words from the file name, in English and Chinese. Not run: the real-embedder tests (unchanged code) and anything on macOS.
+
+### 2026-11-03: images get real alt text (Normalizer, Claude vision)
+
+1. **`VisionNormalizer`** (`notebase/blackbox/llm.py`): each attached image goes to Claude Haiku 5.5 with the typed text as context and comes back as 1–3 sentences describing the content, quoting important text in the image. It becomes `[image: <description> (file name)]`. Non-image files, and any image that fails (unreadable, unsupported, API error, refusal, empty answer), get the stub's file-name marker, one image at a time, so a write never fails because of this box. `NOTEBASE_NORMALIZER_MODEL` overrides the model; `NOTEBASE_LLM=none` keeps images local.
+2. **Image preparation** (`notebase/blackbox/images.py`): API formats under 1568 px and 5 MB go as they are; HEIC (iPhone), TIFF, BMP and larger photos are rotated from EXIF, shrunk and re-encoded. `Pillow` and `pillow-heif` are now dependencies.
+3. **Eval** (`scripts/eval_vision.py`, D12). Reading the outputs found two problems the first checks missed: the alt text repeated the typed text, and after the first fix a Chinese capture got an English description. Both are fixed in the prompt; see `docs/llm.md` for the steps and the one accepted quirk.
+4. **End to end** (MongoDB, real Qwen3 embedder, live Haiku, CLI): 6 images (one HEIC) and 2 text notes. Six of seven cues found the right image as the top seed, including cross-lingual ones: "那张猫的照片" → the cat photo described in English, "咖啡花了多少钱" → the receipt, "端口被占用怎么办" → the error screenshot, "日本料理" → the sushi photo, "法国旅行" → the Eiffel Tower, "中文分词什么时候做" → the whiteboard. "铁塔" found nothing: the two-character cue scored under the retriever's threshold, a find-side limit ([#4](https://github.com/saltfish-len/Notebase/issues/4)), not an alt-text one.
+
+State at the end: 41 fast tests pass (12 new for images and the VisionNormalizer, against a fake client), plus the MongoDB tests. Not run: anything on macOS (the HEIC path was tested with an image converted by `pillow-heif`, not a real iPhone file).
+
+### 2026-11-03: is it easy to deploy?
+
+A clean-room run of the README in a fresh container (new venv, `docker compose up -d`, first write and find, then failure cases). Install took about 1.5 minutes plus downloads (venv 1.5 GB, MongoDB image 2 GB, model 1.2 GB). What it found and what changed:
+
+1. **Bug: MongoDB never started again after its container was recreated.** `mongodb-atlas-local` names its replica set after the container's hostname and stores that in the data volume. Compose gave the container a random hostname, so any recreation (changing the compose file, updating the image, `down` + `up`) left the node `REMOVED`, stuck in `health: starting`, with all notes unreachable. Fixed with `hostname: mongodb` in `docker-compose.yml`; checked that the database comes back healthy with its notes after `up --force-recreate`, `restart` and `down` + `up`. Databases created before this change can't be recovered this way (the README says how to start over).
+2. **MongoDB down → 30 s hang and a pymongo traceback.** Now a 5 s server-selection timeout and one line: "cannot reach MongoDB at … Start it … with: docker compose up -d".
+3. **`restart: unless-stopped`**, so MongoDB comes back after a reboot once Docker Desktop is running.
+4. **`NOTEBASE_DEVICE`** (`cpu` / `cuda` / `mps`) as an escape hatch for the embedding model, because MPS on Apple Silicon is untested.
+5. **README quickstart** split by platform: on macOS PyPI's PyTorch is right; on Linux without a GPU the CPU index avoids several GB of CUDA. It now states Python 3.10+ (macOS's system Python is too old), the disk space, the API key and what happens without one, and the 7 s per command from reloading the model ([#2](https://github.com/saltfish-len/Notebase/issues/2)).
+
+Seen but left alone: without an API key each write prints two fallback warnings (the README says to set `NOTEBASE_LLM=none` for quiet offline use), and Hugging Face prints an "unauthenticated requests" warning on every command unless `HF_TOKEN` or `HF_HUB_OFFLINE=1` is set.
+
+Still not tested on macOS: Docker Desktop, the arm64 MongoDB image (the manifest lists arm64), MPS, and a real iPhone HEIC file.
 

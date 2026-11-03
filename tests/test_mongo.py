@@ -64,3 +64,15 @@ def test_mongo_refuses_a_second_embedding_model(store):
     Notebase.create(store, HashingEmbedder(dim=64))
     with pytest.raises(EmbeddingMismatch, match="hashing-v1:64"):
         Notebase.create(store, HashingEmbedder(dim=32))
+
+
+def test_mongo_keeps_capture_attachments(store):
+    from notebase.models import Attachment
+
+    app = Notebase.with_stubs(store, embedding_dim=64)
+    board = Attachment(name="board.jpg", media_type="image/jpeg", size=3, sha256="abc")
+    result = app.write("Sprint plan.", attachments=[board])
+    doc = store.captures.find_one({"_id": result.capture.id})
+    assert doc["text"] == "Sprint plan."
+    assert doc["attachments"][0]["name"] == "board.jpg"
+    assert doc["normalized"] == "Sprint plan.\n[image: board (board.jpg)]"

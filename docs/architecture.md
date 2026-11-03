@@ -6,8 +6,8 @@ touching anything else. Right now every box has a placeholder stub
 (`notebase/blackbox/stubs.py`), so the whole system runs end to end on MongoDB.
 Boxes get replaced by real implementations one at a time. So far the
 **Embedder** (`notebase/blackbox/embedders.py`, see [embedding.md](embedding.md))
-and the **Atomizer** and **Enricher** (`notebase/blackbox/llm.py`, see
-[llm.md](llm.md)) are real.
+and the **Normalizer** (images only), **Atomizer** and **Enricher**
+(`notebase/blackbox/llm.py`, see [llm.md](llm.md)) are real.
 
 ## Layers
 
@@ -24,7 +24,7 @@ flowchart LR
 
     subgraph BB["Black boxes (blackbox/interfaces.py)"]
         direction TB
-        A[Atomizer] --- C[Contextualizer] --- E[Enricher] --- EM[Embedder] --- L[Linker]
+        N[Normalizer] --- A[Atomizer] --- C[Contextualizer] --- E[Enricher] --- EM[Embedder] --- L[Linker]
         QI[QueryInterpreter] --- R[Retriever] --- S[Spreader] --- CL[Clusterer] --- LB[Labeler]
     end
 
@@ -34,7 +34,7 @@ flowchart LR
     end
 
     CLI --> WP & FP
-    WP --> A
+    WP --> N
     FP --> QI
     WP & FP --> Storage
     L & R & S -.-> Storage
@@ -49,8 +49,9 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    IN([raw text]) --> CAP[capture<br/><i>save verbatim</i>]
-    CAP --> AT[[Atomizer]]
+    IN([raw text + files]) --> CAP[capture<br/><i>save verbatim</i>]
+    CAP --> NO[[Normalizer]]
+    NO -- text-only content --> AT[[Atomizer]]
     AT -- fragments --> CTX[[Contextualizer]]
     CTX -- self-contained text --> EN[[Enricher]]
     EN -- keywords · tags · entities --> EMB[[Embedder]]
@@ -62,7 +63,8 @@ flowchart LR
 
 | Black box | Contract | Current stub | Intended real version |
 |---|---|---|---|
-| Atomizer | `Capture -> list[str]` | ✅ **real**: Claude (Haiku 5.5) splits into self-contained notes; paragraph split as fallback | n/a |
+| Normalizer | `Capture -> str` (text + attachments → text) | ✅ **images real**: Claude (Haiku 5.5) alt text describing the content and quoting important text, one call per image, typed text as context. Other files, and any image that fails, get the stub's file-name marker: `whiteboard_plan.jpg` → `[image: whiteboard plan (whiteboard_plan.jpg)]`. Markers go on their own lines after the typed text | audio transcripts (local speech-to-text), PDF and web-page text extraction |
+| Atomizer | `Capture.content -> list[str]` | ✅ **real**: Claude (Haiku 5.5) splits into self-contained notes; paragraph split as fallback | n/a |
 | Contextualizer | `(fragment, Capture) -> str` | identity (the LLM Atomizer already resolves references) | separate pass only if atomizing and contextualizing need different models |
 | Enricher | `list[str] -> list[Enrichment]` (one call per capture) | ✅ **real**: Claude (Haiku 5.5) keywords with synonyms and zh/en equivalents, tags reused from the store's vocabulary, entities; frequency stub as fallback | n/a |
 | Embedder | `embed_documents(list[str])`, `embed_query(str)` | ✅ **real**: Qwen3-Embedding-0.6B (local); hashing stub kept for tests | n/a |
@@ -101,8 +103,25 @@ their labels).
 **`captures`**: raw input, never modified.
 
 ```jsonc
-{ "_id": "c_…", "text": "…", "source": "typed", "created_at": ISODate }
+{
+  "_id": "c_…",
+  "text": "…",                   // what the user typed, verbatim
+  "source": "typed",
+  "attachments": [               // references to attached files, not their bytes
+    { "id": "a_…", "name": "board.jpg", "media_type": "image/jpeg",
+      "path": "/Users/…/board.jpg", "size": 482113, "sha256": "…" }
+  ],
+  "normalized": "…",             // the Normalizer's text-only version, what the boxes read
+  "created_at": ISODate
+}
 ```
+
+The capture is saved before the Normalizer runs and saved again with
+`normalized` filled in, so the typed text and file references are never lost.
+Only a **reference** to each file is stored (path, size, SHA-256). If the file
+is moved or deleted, the note keeps its alt text but the original is gone.
+Copying the bytes into the store (e.g. GridFS) is left for when a real
+Normalizer needs to re-read them.
 
 **`notes`**: one document per atomic note. The vector and the graph edges live
 on the note itself.

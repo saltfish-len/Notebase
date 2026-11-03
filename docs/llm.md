@@ -1,10 +1,11 @@
-# Atomizer and Enricher (LLM)
+# Normalizer, Atomizer and Enricher (LLM)
 
-Both boxes run on Claude through the Anthropic SDK (`notebase/blackbox/llm.py`).
+These boxes run on Claude through the Anthropic SDK (`notebase/blackbox/llm.py`).
 The default model is **Claude Haiku 5.5** (`claude-haiku-5-5`).
 
 | Box | Calls per write | Effort | Output |
 |---|---|---|---|
+| Normalizer | 1 per attached image (0 without images) | `low` | `{"alt_text": str}`: 1–3 sentences describing the image, quoting important text in it |
 | Atomizer | 1 | `medium` | `{"notes": [str]}`: self-contained notes in the user's own words and language |
 | Enricher | 1 for all notes of the capture | `low` | per note: keywords (with synonyms and zh/en equivalents), 1–3 tags, entities |
 
@@ -71,6 +72,18 @@ reading the outputs side by side.
    never use catch-all tags (`other`, `misc`, `general`). One run produced
    `other`.
 
+5. Atomizer (added with the Normalizer, 2026-11-03): lines like
+   `[image: whiteboard sprint (whiteboard_sprint.jpg)]` stand for attached
+   files. Copy each one verbatim into the note it goes with, even when that
+   text already describes the file; a marker is a note of its own only when
+   the capture has no text. The first wording ("put it in the note about what
+   the file shows... a marker with nothing to go with is a note of its own")
+   split the caption case into caption + bare marker in 3 of 3 runs. With the
+   current wording, a 5-case marker check passed 15/15 (3 runs), and the full
+   eval with the 4 new file cases passed 14/14, 14/14 and 13/14 on Haiku, 0
+   fallbacks, ≈ $0.37 per 1000 writes. The one failure was `brain-dump-zh`
+   returning too many keywords, the Enricher quirk listed below.
+
 ### What is still imperfect (accepted)
 
 * **Translation still happens occasionally:** 1 of 9 runs on `mixed-dump`
@@ -121,8 +134,10 @@ python scripts/eval_llm.py         # Haiku 5.5 vs Sonnet 5.5
 python scripts/eval_llm.py --models claude-haiku-5-5 claude-opus-5-5
 ```
 
-The eval runs 10 captures (English, Chinese, mixed, brain dumps, references,
-URLs, hashtags) through both boxes. `--atomizer-effort high` tries a different
+The eval runs 14 captures (English, Chinese, mixed, brain dumps, references,
+URLs, hashtags, attached files) through both boxes. Captures with files go
+through the stub Normalizer first, and `markers_once` checks that every file
+marker lands in exactly one note. `--atomizer-effort high` tries a different
 Atomizer effort, and `--tag=-run2` keeps the output files of repeated runs
 apart; results vary from run to run, so run it more than once before
 deciding. For each model it prints which automatic
@@ -131,6 +146,70 @@ vocabulary, latency, tokens and cost. Full outputs are saved to
 `eval-out/<model>.json` for side-by-side reading. Automatic checks only catch
 the obvious failures, so read the notes themselves before deciding. Running it
 costs well under a cent on Haiku and about 7 cents on Sonnet.
+
+## Normalizer: image alt text
+
+Measured on 2026-11-03 with `scripts/eval_vision.py`: 7 images, 3 runs each
+on Haiku. Three are synthetic and test reading text (a bilingual whiteboard, a
+receipt, a terminal error screenshot), four are Wikimedia Commons photos (a cat,
+converted to HEIC like an iPhone photo; the Eiffel Tower; a sushi platter; a
+food still life). File names are camera-style (`IMG_4471.jpg`), so the model
+gets no hint from them. Checks: the words a person would search for are there
+(`27017`, `Blue Bottle`, `¥1,130`, `小李`, `Eiffel`, `sushi`...), the language
+follows the typed text, there is no "This image shows" preamble, and the typed
+text is not repeated.
+
+| | Haiku 5.5 (default) | Sonnet 5.5 |
+|---|---|---|
+| Cases passing all checks | **20/21, 19/21** (final prompt, 2 × 3 runs) | 7/7 (1 run) |
+| Latency per image, p50 | 1.5 s | 2.1 s |
+| Tokens per image, in / out | ≈ 1900 / 125 | ≈ 1930 / 125 |
+| Cost per 1000 images | **$0.25** | $5.11 |
+
+Haiku read every piece of text in the synthetic images correctly in every run
+(names, dates, prices, the port number), recognised the landmark, and
+described the photos in enough detail to find them (tabby cat with green eyes,
+nigiri by fish). Haiku stays the default.
+
+How the prompt got there (failures found by reading the outputs):
+
+1. The first prompt passed 15/21 by the checks, but the 6 failures were wrong
+   checks: a case-sensitive `Blue Bottle` (the receipt says `BLUE BOTTLE`) and a
+   language check that counted English quoted from the image. Reading the
+   outputs showed a real problem instead: the alt text started by repeating the
+   typed text (`今天周会的白板：…`, `… Paris trip, day 2.`). The typed text is
+   already in the note, so this only adds noise. A `no_echo` check was added.
+2. "Don't repeat it" fixed the echo but made Haiku describe the whiteboard in
+   English although the typed text was Chinese (3 of 3). The language check now
+   ignores quoted text, and the prompt states the language rule on its own.
+3. That brought the echo back as a title in 2 of 3 runs, so the prompt now says
+   "never copy it into the description, not as a title and not as a closing
+   remark; start with what the image is".
+
+**Still imperfect (accepted):** on `food-display-zh` (typed text "健康饮食的参考图")
+Haiku sometimes ends with "适合作为健康饮食的参考图" (3 of 6 runs). It only
+duplicates words that are in the note anyway. Sonnet did not do this in its run.
+
+Images are prepared in `notebase/blackbox/images.py`: JPEG, PNG, GIF and WebP up
+to 1568 px and 5 MB are sent as they are; anything else (HEIC, TIFF, BMP,
+bigger photos) is rotated upright from EXIF, shrunk to 1568 px on the long edge
+(the API would downscale it anyway) and re-encoded as JPEG, or PNG if it has
+transparency. Each image is its own call, so one failure (unreadable file,
+API error, refusal) only turns that image into a file-name marker.
+
+**Privacy:** images are sent to the Claude API. `NOTEBASE_LLM=none` keeps
+everything local (file-name markers only).
+
+```bash
+python scripts/eval_vision.py --runs 3                       # Haiku 5.5
+```
+
+```bash
+python scripts/eval_vision.py --model claude-sonnet-5-5
+```
+
+The first run builds the images in `eval-out/images` (it needs a CJK font and
+downloads the four photos from Wikimedia Commons).
 
 ## Design notes
 
