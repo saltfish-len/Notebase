@@ -15,6 +15,7 @@ dependencies = [
     "anthropic>=2.0",
     "Pillow>=10",
     "pillow-heif>=0.18",  # iPhone photos (HEIC)
+    "pyyaml>=6",  # Obsidian frontmatter (import)
 ]
 
 [project.optional-dependencies]

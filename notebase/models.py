@@ -69,6 +69,19 @@ class Attachment:
 
 
 @dataclass
+class Origin:
+    """Where an imported capture came from, so a re-import can skip it.
+
+    ``uri`` names the file, e.g. ``obsidian:Deep Learning/Linear probing.md``;
+    ``sha256`` is the hash of its text at import time.
+    """
+
+    uri: str
+    sha256: str
+    imported_at: datetime = field(default_factory=utcnow)
+
+
+@dataclass
 class Capture:
     """Raw user input, stored verbatim for provenance.
 
@@ -81,6 +94,7 @@ class Capture:
     source: str = "typed"  # typed | pasted | voice | web-clip | import
     attachments: list[Attachment] = field(default_factory=list)
     normalized: str | None = None
+    origin: Origin | None = None  # set for imports only
     id: str = field(default_factory=lambda: new_id("c"))
     created_at: datetime = field(default_factory=utcnow)
 
