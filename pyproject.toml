@@ -12,6 +12,7 @@ dependencies = [
     "pymongo>=4.7",
     "sentence-transformers>=3.0",
     "numpy",
+    "torch",  # listed so uv can take it from the CPU index on Linux (see [tool.uv])
     "anthropic>=2.0",
     "Pillow>=10",
     "pillow-heif>=0.18",  # iPhone photos (HEIC)
@@ -25,6 +26,16 @@ mcp = ["mcp>=1.10"]  # MCP server for Claude Code and other LLM clients
 notebase = "notebase.cli:main"
 notebase-mcp = "notebase.mcp_server:main"
 notebase-web = "notebase.server:main"
+
+# uv: on Linux take the CPU-only PyTorch build (several GB smaller than the CUDA one);
+# macOS uses PyPI's build, which includes Apple Silicon GPU support.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
 
 [tool.setuptools.packages.find]
 include = ["notebase*"]

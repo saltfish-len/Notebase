@@ -194,6 +194,14 @@ pip install torch --index-url https://download.pytorch.org/whl/cpu
 pip install -e .
 ```
 
+Or, with [uv](https://docs.astral.sh/uv/), skip the venv step above and run one command on either platform. It
+installs the versions pinned in `uv.lock` (on Linux the CPU build of PyTorch, so use pip if you want CUDA) and the
+`dev` and `mcp` extras:
+
+```bash
+uv sync --all-extras
+```
+
 Then add a Claude API key from the [Claude Console](https://platform.claude.com/). Without one, everything still
 works, but notes are split by paragraph, keywords are plain word counts and images are described only by their file
 name (each write prints a warning; `export NOTEBASE_LLM=none` turns the LLM off quietly).

@@ -122,3 +122,5 @@ State at the end: 88 fast tests pass (8 server tests). Run against the real data
 ### 2026-11-03: records caught up with the web UI
 
 Docs only. The web UI covers [#3](https://github.com/saltfish-len/Notebase/issues/3) (closed) and most of [#2](https://github.com/saltfish-len/Notebase/issues/2): `notebase-web` is the long-running server with `POST /write` and `POST /find`. What is left of #2 is the CLI using a running server instead of loading the model itself, so #2 stays open for that and the README roadmap now lists it as its own item. `.claude/launch.json` (the `notebase-web` preview config) is committed; `.claude/settings.local.json` is ignored as per-machine.
+
+uv support, alongside pip: `uv.lock` is committed and `uv sync --all-extras` installs everything. `torch` is now a direct dependency (it already came in through sentence-transformers) so that `[tool.uv.sources]` can take it from the CPU index on Linux, matching the pip instructions; macOS gets PyPI's build. pip ignores the `[tool.uv]` tables. Checked on macOS: `uv lock`, `uv sync --all-extras`, 88 fast tests pass. Not run: `uv sync` on Linux (the lock has `+cpu` torch wheels for Linux).

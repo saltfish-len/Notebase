@@ -30,6 +30,10 @@ pip install torch --index-url https://download.pytorch.org/whl/cpu
 pip install -e ".[dev]"
 ```
 
+On a machine with [uv](https://docs.astral.sh/uv/), `uv sync --all-extras` does the two `pip install` lines
+(`pyproject.toml` points uv at the CPU PyTorch index on Linux); run tests with `.venv/bin/python -m pytest`.
+After changing dependencies, run `uv lock` and commit `uv.lock`; pip ignores it.
+
 The first real-model run downloads Qwen3-Embedding-0.6B (about 1.2 GB) from Hugging Face.
 The LLM boxes read `ANTHROPIC_API_KEY`, or `CLAUDE_API_KEY` as an alias (the user's cloud
 environment sets `CLAUDE_API_KEY`). Without a key, writes still work through the stub fallback.
