@@ -6,9 +6,8 @@ import argparse
 import json
 import logging
 import sys
-from dataclasses import asdict
-
 from notebase.app import Config, Notebase
+from notebase.jsonio import find_dict, note_dict
 from notebase.models import Attachment, FindResult, WriteResult
 from notebase.storage.base import EmbeddingMismatch
 
@@ -92,7 +91,7 @@ def _quiet_model_loading() -> None:
 
 def _print_write(result: WriteResult, as_json: bool) -> None:
     if as_json:
-        print(json.dumps([_note_json(n) for n in result.notes], default=str, ensure_ascii=False))
+        print(json.dumps([note_dict(n) for n in result.notes], default=str, ensure_ascii=False))
         return
     files = len(result.capture.attachments)
     with_files = f" with {files} file(s)" if files else ""
@@ -104,19 +103,7 @@ def _print_write(result: WriteResult, as_json: bool) -> None:
 
 def _print_find(result: FindResult, as_json: bool) -> None:
     if as_json:
-        print(
-            json.dumps(
-                {
-                    "seeds": result.seeds,
-                    "notes": {i: _note_json(n) for i, n in result.notes.items()},
-                    "activation": result.activation,
-                    "edges": [asdict(e) for e in result.edges],
-                    "clusters": [asdict(c) for c in result.clusters],
-                },
-                default=str,
-                ensure_ascii=False,
-            )
-        )
+        print(json.dumps(find_dict(result), default=str, ensure_ascii=False))
         return
     if not result.notes:
         print("nothing comes to mind.")
@@ -128,12 +115,6 @@ def _print_find(result: FindResult, as_json: bool) -> None:
             mark = "★" if i in seeds else "·"
             print(f"  {mark} [{result.activation.get(i, 0):.2f}] {_short(result.notes[i].content)}")
     print(f"\n{len(result.notes)} notes, {len(result.edges)} edges, {len(result.clusters)} clusters")
-
-
-def _note_json(n) -> dict:
-    d = asdict(n)
-    d.pop("embedding", None)
-    return d
 
 
 def _short(text: str, width: int = 100) -> str:

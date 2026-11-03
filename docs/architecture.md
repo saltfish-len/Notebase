@@ -15,6 +15,7 @@ and the **Normalizer** (images only), **Atomizer** and **Enricher**
 flowchart LR
     subgraph Client
         CLI["CLI<br/>notebase write / find"]
+        WEB["Web UI + HTTP server<br/>server.py · web/index.html<br/>POST /write · POST /find"]
     end
 
     subgraph App["Notebase (app.py)"]
@@ -33,7 +34,7 @@ flowchart LR
         MEM[("InMemory<br/>tests")]
     end
 
-    CLI --> WP & FP
+    CLI & WEB --> WP & FP
     WP --> N
     FP --> QI
     WP & FP --> Storage
@@ -42,6 +43,11 @@ flowchart LR
 
 * **Pipelines** only orchestrate. They contain no algorithmic decisions.
 * **Black boxes** hold all the algorithmic decisions. Each is a `Protocol`.
+* **Clients** are thin. The CLI builds the app on every call; `notebase-web`
+  (`server.py`) builds it once and serves the same two verbs over HTTP, plus a
+  single-file web UI (`web/index.html`, no build step, no CDN) that draws a find
+  result as a graph: seeds ringed in the middle, node size from `activation`,
+  clusters as labelled halos, click a note to re-centre (a new find from it).
 * **NoteStore** is the only way to persist or query data. MongoDB is the
   real backend, and an in-memory store with the same contract is used for tests.
 
@@ -121,7 +127,9 @@ The capture is saved before the Normalizer runs and saved again with
 Only a **reference** to each file is stored (path, size, SHA-256). If the file
 is moved or deleted, the note keeps its alt text but the original is gone.
 Copying the bytes into the store (e.g. GridFS) is left for when a real
-Normalizer needs to re-read them.
+Normalizer needs to re-read them. Files uploaded through the web UI are the
+exception that already has a copy: the server keeps them under
+`NOTEBASE_FILES_DIR/<sha256>/<file name>` and the capture points there.
 
 **`notes`**: one document per atomic note. The vector and the graph edges live
 on the note itself.

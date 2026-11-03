@@ -14,6 +14,7 @@ spreading over a link graph). Read `README.md` for the idea and
   - `llm.py`: real Normalizer (image alt text), Atomizer and Enricher (Claude, Haiku 5.5 by default). See `docs/llm.md`.
 - `notebase/storage/`: `NoteStore` contract, MongoDB implementation, in-memory implementation for tests.
 - `notebase/app.py`: composition root and `Config` (all `NOTEBASE_*` env vars).
+- `notebase/server.py` + `notebase/web/index.html`: `notebase-web`, the two verbs over HTTP (stdlib only) and the graph UI. `notebase/jsonio.py` holds the JSON shapes the CLI and the server share.
 - `docs/DEVLOG.md`: decisions and session history. **Add an entry when you finish a piece of work.**
 - Backlog: GitHub issues on `saltfish-len/Notebase`.
 

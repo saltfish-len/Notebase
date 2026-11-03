@@ -78,3 +78,15 @@ Seen but left alone: without an API key each write prints two fallback warnings 
 
 Still not tested on macOS: Docker Desktop, the arm64 MongoDB image (the manifest lists arm64), MPS, and a real iPhone HEIC file.
 
+### 2026-11-03: web UI and HTTP server ([#2](https://github.com/saltfish-len/Notebase/issues/2), [#3](https://github.com/saltfish-len/Notebase/issues/3))
+
+The user asked for a local deployment with an interactive interface, a web page if nothing else.
+
+1. **`notebase-web`** (`notebase/server.py`): builds `Notebase.from_config()` once and serves `POST /write`, `POST /find` and the UI at `/`. **Standard library only** (`ThreadingHTTPServer`): no web framework to install and no change to CI. Requests go through the pipelines one at a time (a lock), since the boxes were written for a single caller. It binds to 127.0.0.1 by default because there is no authentication. Mongo down gives a 503 with the `docker compose up -d` hint; bad input gives a 400.
+2. **Files over HTTP** arrive base64 in the JSON body (64 MB cap) and are kept under `NOTEBASE_FILES_DIR/<sha256>/<name>`, so captures from the web point at a real copy (a partial answer to D11 for this path; the CLI still stores the user's own path).
+3. **Web UI** (`notebase/web/index.html`, one file, no build step, no CDN, so it works offline): one input that switches between Write and Find; files via button, drag and drop or paste. A find draws the region as a graph from a small force layout: seeds ringed and pulled to the centre, node size from activation, link springs shorter for stronger links, clusters as labelled halos. Clicking a node runs a find from that note (re-centre), keeping known nodes in place and animating the rest; a trail goes back. After a write it runs a find from the first new note and marks the new notes. Light and dark themes; stacks on a phone.
+4. **`notebase/jsonio.py`**: the write/find JSON shapes, now shared by the CLI's `--json` and the server.
+
+Checked in a browser (Playwright, Chromium) against MongoDB, the real Qwen3 embedder and live Haiku: six mixed zh/en writes, a find for "怎么记得更牢", a click to re-centre, and an image upload whose Chinese alt text quoted the whiteboard's three lines; "中文搜索什么时候做" then found it as the top seed. Measured on this container: a find through the server took 136–354 ms (vs about 7 s per CLI call); a text write about 3 s, mostly the two Haiku calls. The screenshots showed three bugs that were fixed: the empty-state text stayed over the graph, a small graph was magnified until labels were huge (the view now never scales above 1 unit per pixel), and the status line lost the write summary.
+
+Seen, not fixed: every find so far lands in **one cluster** with one label, because the Clusterer stub joins everything connected above 0.3 ([#4](https://github.com/saltfish-len/Notebase/issues/4)); the graph will only show separate regions once that box is real. The CLI does not talk to a running server yet. Not tested: Safari, Firefox, a phone browser (only a 390 px Chromium viewport), macOS.

@@ -22,9 +22,13 @@ dev = ["pytest>=8"]
 
 [project.scripts]
 notebase = "notebase.cli:main"
+notebase-web = "notebase.server:main"
 
 [tool.setuptools.packages.find]
 include = ["notebase*"]
+
+[tool.setuptools.package-data]
+notebase = ["web/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

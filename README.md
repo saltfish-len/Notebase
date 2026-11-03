@@ -148,6 +148,8 @@ stub, and the MongoDB data model.
 ```
 notebase/
 ├── app.py              # composition root: Notebase.write / Notebase.find
+├── server.py           # `notebase-web`: HTTP POST /write, /find + the web UI
+├── web/index.html      # the web UI (one file, no build step)
 ├── write.py            # WritePipeline (orchestration only)
 ├── find.py             # FindPipeline  (orchestration only)
 ├── models.py           # Capture, Note, Link, Query, FindResult, ...
@@ -212,6 +214,25 @@ notebase find "怎么记得更牢"
   · [0.21] Coffee in the afternoon hurts deep sleep.
 ```
 
+### Web UI
+
+```bash
+notebase-web
+```
+
+Then open <http://localhost:8765/>. One input box switches between **Write** and **Find**. Write takes typed text and
+files (the ＋ File button, drag and drop, or paste a screenshot). Find draws the result as a graph: seed notes have a
+ring and sit in the middle, a node's size is its activation, clusters are labelled halos, and clicking a note runs a
+new find from it, so you can follow associations; the trail above the graph goes back. After a write you see the new
+notes (dashed green ring) among the notes they were linked to.
+
+The server loads the model once (about 10 s at start), so a find then takes about 0.2 s instead of the CLI's 7 s.
+It listens on this machine only; `--host 0.0.0.0` exposes it to your network, **with no login**. `--port` changes
+the port. The same two verbs are an HTTP API: `POST /write {"text", "files": [{"name", "data": base64}]}` and
+`POST /find {"text", "k"}`, which returns the same JSON as `notebase --json find`.
+
+### Command line
+
 ★ marks a seed note the query hit directly. · marks a note reached by association. `--json` gives the full
 `FindResult` (nodes, edges, clusters) for a graph UI.
 
@@ -233,8 +254,8 @@ Embedding never sends notes anywhere, but the LLM boxes send text and attached i
 
 Things to know:
 
-* Each `notebase` command loads the model again, so it takes about 7 s (measured on a cloud container CPU), even for a find. A
-  long-running server will fix this ([#2](https://github.com/saltfish-len/Notebase/issues/2)).
+* Each `notebase` command loads the model again, so it takes about 7 s (measured on a cloud container CPU), even for a find.
+  `notebase-web` loads it once.
 * If MongoDB isn't running, commands stop with "cannot reach MongoDB"; run `docker compose up -d` in the folder.
 * A database created with an older `docker-compose.yml` (before `hostname: mongodb`) won't start after the
   container is recreated. Early versions only: `docker compose down -v && docker compose up -d` starts over
@@ -255,6 +276,7 @@ Things to know:
 | `NOTEBASE_LLM` | `anthropic` | `anthropic`: Normalizer (image alt text), Atomizer and Enricher on Claude; `none`: stubs only, fully offline |
 | `NOTEBASE_LLM_MODEL` | `claude-haiku-5-5` | model for both LLM boxes |
 | `NOTEBASE_NORMALIZER_MODEL` / `NOTEBASE_ATOMIZER_MODEL` / `NOTEBASE_ENRICHER_MODEL` | (unset) | per-box override, e.g. atomize with Sonnet, enrich with Haiku |
+| `NOTEBASE_FILES_DIR` | `~/.notebase/files` | where the web server keeps uploaded files (captures point to them) |
 | `ANTHROPIC_API_KEY` (or `CLAUDE_API_KEY`) | (unset) | Claude API key from the [Claude Console](https://platform.claude.com/) |
 
 Without a working API key, writes still succeed: the LLM boxes log a warning and fall back to their stubs.
@@ -292,8 +314,9 @@ Open work is tracked in [GitHub issues](https://github.com/saltfish-len/Notebase
   - [ ] Chinese keyword search, vector index lag ([#6](https://github.com/saltfish-len/Notebase/issues/6))
   - [ ] Re-embed when switching embedding models ([#5](https://github.com/saltfish-len/Notebase/issues/5))
 - [ ] **v1: Graph view**
-  - [ ] Long-running server with a write/find HTTP API ([#2](https://github.com/saltfish-len/Notebase/issues/2))
-  - [ ] Web UI: one input for write and find, zoomed-in subgraph, click to re-centre ([#3](https://github.com/saltfish-len/Notebase/issues/3))
+  - [x] Long-running server with a write/find HTTP API ([#2](https://github.com/saltfish-len/Notebase/issues/2)); the CLI does not use it yet
+  - [x] Web UI: one input for write and find, zoomed-in subgraph, click to re-centre ([#3](https://github.com/saltfish-len/Notebase/issues/3))
+  - [ ] Real clusters and labels, so the graph shows more than one region ([#4](https://github.com/saltfish-len/Notebase/issues/4))
 - [ ] **v2: Better memory**
   - [ ] Superseding and versioning of thoughts
   - [ ] Recency and frequency weighting (often-recalled notes get stronger)
