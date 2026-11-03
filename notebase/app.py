@@ -5,9 +5,9 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 
-from notebase.blackbox import Atomizer, Embedder, Enricher, stubs
+from notebase.blackbox import Atomizer, Embedder, Enricher, Normalizer, stubs
 from notebase.find import FindPipeline
-from notebase.models import FindResult, WriteResult
+from notebase.models import Attachment, FindResult, WriteResult
 from notebase.storage.base import NoteStore
 from notebase.write import WritePipeline
 
@@ -50,8 +50,11 @@ class Notebase:
         self._write = write_pipeline
         self._find = find_pipeline
 
-    def write(self, text: str, source: str = "typed") -> WriteResult:
-        return self._write.write(text, source)
+    def write(
+        self, text: str = "", source: str = "typed", attachments: list[Attachment] | None = None
+    ) -> WriteResult:
+        """Put a thought in: typed text, files (images, audio, PDFs, ...), or both."""
+        return self._write.write(text, source, attachments)
 
     def find(self, text: str, k: int = 5) -> FindResult:
         return self._find.find(text, k)
@@ -64,6 +67,7 @@ class Notebase:
         embedder: Embedder,
         atomizer: Atomizer | None = None,
         enricher: Enricher | None = None,
+        normalizer: Normalizer | None = None,
     ) -> "Notebase":
         """Wire the pipelines; any box not given falls back to its stub."""
         store.bind_embedding(embedder.name, embedder.dim)
@@ -71,6 +75,7 @@ class Notebase:
         return cls(
             WritePipeline(
                 store=store,
+                normalizer=normalizer or stubs.FilenameAltTextNormalizer(),
                 atomizer=atomizer or stubs.ParagraphAtomizer(),
                 contextualizer=stubs.IdentityContextualizer(),
                 enricher=enricher or stubs.FrequencyEnricher(),

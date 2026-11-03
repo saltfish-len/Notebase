@@ -44,6 +44,11 @@ details, add facts, or comment on the content. Captures often mix Chinese and \
 English: keep each part in the language the user wrote it in, even when the \
 rest of the capture is in another language. Keep names, numbers, URLs and \
 #hashtags exactly as written.
+- Lines like "[image: whiteboard sketch (IMG_2031.jpg)]" stand for a file the user \
+attached (image, audio, video, document). A file is part of the idea it was attached \
+to, not a separate idea: copy each marker, exactly as written, into the note it goes \
+with, usually the idea just before it, even when that text already describes the \
+file. A marker is a note of its own only when the capture has no text at all.
 - Light cleanup only: drop filler words and fix obvious typos.
 - Keep the ideas in the order they appear."""
 
@@ -72,7 +77,7 @@ class LLMAtomizer:
         self.fallback = fallback or ParagraphAtomizer()
 
     def atomize(self, capture: Capture) -> list[str]:
-        text = capture.text.strip()
+        text = capture.content.strip()
         if not text:
             return []
         try:

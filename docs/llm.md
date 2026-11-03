@@ -71,6 +71,18 @@ reading the outputs side by side.
    never use catch-all tags (`other`, `misc`, `general`). One run produced
    `other`.
 
+5. Atomizer (added with the Normalizer, 2026-11-03): lines like
+   `[image: whiteboard sprint (whiteboard_sprint.jpg)]` stand for attached
+   files. Copy each one verbatim into the note it goes with, even when that
+   text already describes the file; a marker is a note of its own only when
+   the capture has no text. The first wording ("put it in the note about what
+   the file shows... a marker with nothing to go with is a note of its own")
+   split the caption case into caption + bare marker in 3 of 3 runs. With the
+   current wording, a 5-case marker check passed 15/15 (3 runs), and the full
+   eval with the 4 new file cases passed 14/14, 14/14 and 13/14 on Haiku, 0
+   fallbacks, ≈ $0.37 per 1000 writes. The one failure was `brain-dump-zh`
+   returning too many keywords, the Enricher quirk listed below.
+
 ### What is still imperfect (accepted)
 
 * **Translation still happens occasionally:** 1 of 9 runs on `mixed-dump`
@@ -121,8 +133,10 @@ python scripts/eval_llm.py         # Haiku 5.5 vs Sonnet 5.5
 python scripts/eval_llm.py --models claude-haiku-5-5 claude-opus-5-5
 ```
 
-The eval runs 10 captures (English, Chinese, mixed, brain dumps, references,
-URLs, hashtags) through both boxes. `--atomizer-effort high` tries a different
+The eval runs 14 captures (English, Chinese, mixed, brain dumps, references,
+URLs, hashtags, attached files) through both boxes. Captures with files go
+through the stub Normalizer first, and `markers_once` checks that every file
+marker lands in exactly one note. `--atomizer-effort high` tries a different
 Atomizer effort, and `--tag=-run2` keeps the output files of repeated runs
 apart; results vary from run to run, so run it more than once before
 deciding. For each model it prints which automatic

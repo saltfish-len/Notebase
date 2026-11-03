@@ -21,8 +21,13 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from notebase.blackbox.llm import LLMAtomizer, LLMEnricher, build_client
-from notebase.blackbox.stubs import FrequencyEnricher, ParagraphAtomizer
-from notebase.models import Capture
+from notebase.blackbox.stubs import (
+    FilenameAltTextNormalizer,
+    FrequencyEnricher,
+    ParagraphAtomizer,
+    alt_text_marker,
+)
+from notebase.models import Attachment, Capture
 
 # $ per million tokens (input, output), first-party API, prompts <= 100K tokens
 PRICES = {
@@ -43,6 +48,17 @@ class Case:
     must_resolve: list[tuple[str, str]] = field(default_factory=list)
     language: str = "en"
     distinct_topics: bool = False  # several unrelated ideas: tags must not all be identical
+    # files attached to the capture; the stub Normalizer turns them into markers
+    attachments: list[Attachment] = field(default_factory=list)
+
+    def capture(self) -> Capture:
+        capture = Capture(self.text, attachments=self.attachments)
+        capture.normalized = FilenameAltTextNormalizer().normalize(capture)
+        return capture
+
+
+def _file(name: str, media_type: str) -> Attachment:
+    return Attachment(name=name, media_type=media_type)
 
 
 CASES = [
@@ -82,6 +98,22 @@ and wait until it doubles.""",
          (1, 3), ["Thinking, Fast and Slow", "Make It Stick"]),
     Case("url", "Great explainer on vector search https://www.mongodb.com/docs/atlas/atlas-vector-search/ - read the part about numCandidates",
          (1, 2), ["https://www.mongodb.com/docs/atlas/atlas-vector-search/", "numCandidates"]),
+    # Attachments. Each marker must be copied verbatim into exactly one note, and
+    # (must_resolve) into the note about what it goes with. Haiku first split a
+    # caption that already described the image into a note of its own.
+    Case("file-with-caption", "The whiteboard from today's sprint planning: we cut the export feature.",
+         (1, 1), ["whiteboard_sprint.jpg", "export feature"],
+         must_resolve=[("whiteboard_sprint.jpg", "export")],
+         attachments=[_file("whiteboard_sprint.jpg", "image/jpeg")]),
+    Case("file-only", "", (1, 1), ["IMG_2031.HEIC"],
+         attachments=[_file("IMG_2031.HEIC", "image/heic")]),
+    Case("file-in-dump-zh", "周会录音，主要讨论了预算。\n\n另外，下周三要交季度报告。",
+         (2, 2), ["周会.m4a", "季度报告"], must_resolve=[("周会.m4a", "预算")], language="zh",
+         attachments=[_file("周会.m4a", "audio/mp4")]),
+    Case("file-mixed-ideas", "Paper on spaced repetition, read section 3 first. Also remember to buy coffee beans.",
+         (2, 2), ["spaced-repetition-review.pdf", "coffee beans"],
+         must_resolve=[("spaced-repetition-review.pdf", "section 3")], distinct_topics=True,
+         attachments=[_file("spaced-repetition-review.pdf", "application/pdf")]),
 ]
 
 
@@ -146,6 +178,10 @@ def check(case: Case, notes: list[str], enrichments) -> dict:
         ),
         "keywords_5_10": all(5 <= len(e.keywords) <= 12 for e in enrichments),
     }
+    if case.attachments:
+        result["markers_once"] = all(
+            sum(alt_text_marker(a) in n for n in notes) == 1 for a in case.attachments
+        )
     if case.distinct_topics:
         result["tags_vary"] = len({tuple(sorted(e.tags)) for e in enrichments}) > 1
     if case.language == "zh":
@@ -172,7 +208,7 @@ def run_model(model: str, out_dir: Path, effort: str = "medium", tag: str = "") 
 
     rows = []
     for case in CASES:
-        notes = atomizer.atomize(Capture(case.text))
+        notes = atomizer.atomize(case.capture())
         enrichments = enricher.enrich(notes)
         new_tags = {t for e in enrichments for t in e.tags} - set(vocabulary)
         reused = sum(t in vocabulary for e in enrichments for t in e.tags)

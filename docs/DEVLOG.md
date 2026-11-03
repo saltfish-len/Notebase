@@ -16,6 +16,8 @@ in GitHub issues.
 | D7 | **Atomizer and Enricher on Claude Haiku 5.5** (Atomizer effort `medium`, Enricher `low`); Enricher batched per capture; existing tag vocabulary passed in; zh↔en keywords | Measured against Sonnet 5.5: after four prompt fixes Haiku passes 10/10, 9/10 and 9/10 eval cases with 0 fallbacks, at $0.36 vs $7.14 per 1000 writes and 1.5 s vs 2.2 s p50 per call. Raising the Atomizer to `high` did not help. See [docs/llm.md](llm.md) | ✅ measured: [#1](https://github.com/saltfish-len/Notebase/issues/1) |
 | D8 | **Writes never fail because of a model**: the raw capture is saved first, and any LLM error, refusal or bad output falls back to the stub | A memory app must not lose what the user wrote | ✅ |
 | D9 | **Contextualizer stays the identity stub** | The LLM Atomizer already makes notes self-contained, so a separate call would cost more for little gain | ✅ [#1](https://github.com/saltfish-len/Notebase/issues/1): pronouns and "it says" attributions were resolved on Haiku once the prompt asked for attribution explicitly |
+| D10 | **Files become text in a Normalizer box before the Atomizer**, not a multimodal embedding | Keeps one text embedding space (D6) and every later box unchanged; a real Normalizer (Claude vision, local speech-to-text, PDF and web extraction) can replace the stub behind the same Protocol | ✅ v0 stub |
+| D11 | **Captures store file references (path, size, SHA-256), not bytes**, for now | Enough for the file-name stub, which never reads the file. A real Normalizer that must re-read files later will need the bytes kept (e.g. GridFS) | ⚠️ revisit with the real Normalizer |
 
 ## Sessions
 
@@ -41,3 +43,13 @@ State at the end: 27 tests pass, including the MongoDB integration tests and the
 
 Setup note: in this container, `pytest` on `PATH` belongs to a separate uv tool environment and cannot import `notebase`. Use `python -m pytest`.
 
+
+### 2026-11-03: Normalizer v0, files as input to *write*
+
+1. **New black box: Normalizer** (`Capture -> str`, before the Atomizer). Multimodal input goes through *write*; there is no new verb. Every box after it still works on text (D10).
+2. **v0 stub, `FilenameAltTextNormalizer`**: each attachment becomes `[kind: words from the file name (file name)]`, placed on its own line right after the typed text, so the paragraph stub keeps a caption and its files in one note. With no typed text, each file becomes its own note. The file is never opened.
+3. **Data model**: `Attachment` (name, MIME type, path, size, SHA-256) on `Capture.attachments`. `Capture.text` stays what the user typed, `Capture.normalized` holds the Normalizer's output, and the boxes read `Capture.content`. The capture is saved before normalizing and again after. Only file **references** are stored, not bytes (D11).
+4. **CLI**: `notebase write [text] -a FILE [-a FILE ...]`. A missing file is a usage error before anything is written.
+5. **Atomizer prompt**: one rule for file markers. The first wording split a caption that already described its image into caption + bare marker, 3 of 3 runs. The rewrite ("a file is part of the idea it was attached to... a marker is a note of its own only when the capture has no text") passed a 5-case marker check 15/15, and the eval, now with 4 file cases and a `markers_once` check, passed 14/14, 14/14 and 13/14 on Haiku with 0 fallbacks (the one failure: too many keywords on `brain-dump-zh`, a known Enricher quirk). See `docs/llm.md`.
+
+State at the end: 29 fast tests pass; the MongoDB tests (3, including a capture round trip with attachments) pass. End to end through the CLI (MongoDB, live Haiku, hashing embedder): a captioned image and a file-only audio write each gave one note, and `find` hit them by words from the file name, in English and Chinese. Not run: the real-embedder tests (unchanged code) and anything on macOS.

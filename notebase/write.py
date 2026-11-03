@@ -4,31 +4,38 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from notebase.blackbox import Atomizer, Contextualizer, Embedder, Enricher, Linker
-from notebase.models import Capture, Note, WriteResult
+from notebase.blackbox import Atomizer, Contextualizer, Embedder, Enricher, Linker, Normalizer
+from notebase.models import Attachment, Capture, Note, WriteResult
 from notebase.storage.base import NoteStore
 
 
 @dataclass
 class WritePipeline:
     store: NoteStore
+    normalizer: Normalizer
     atomizer: Atomizer
     contextualizer: Contextualizer
     enricher: Enricher
     embedder: Embedder
     linker: Linker
 
-    def write(self, text: str, source: str = "typed") -> WriteResult:
-        # 1. capture: keep the raw input verbatim
-        capture = Capture(text=text, source=source)
+    def write(
+        self, text: str, source: str = "typed", attachments: list[Attachment] | None = None
+    ) -> WriteResult:
+        # 1. capture: keep the raw input (typed text + file references) verbatim
+        capture = Capture(text=text, source=source, attachments=list(attachments or []))
         self.store.save_capture(capture)
 
-        # 2. atomize  3. contextualize
+        # 2. normalize: attachments -> text, so every later box works on text
+        capture.normalized = self.normalizer.normalize(capture)
+        self.store.save_capture(capture)
+
+        # 3. atomize  4. contextualize
         contents = [
             self.contextualizer.contextualize(fragment, capture)
             for fragment in self.atomizer.atomize(capture)
         ]
-        # 4. enrich  5. embed (one batch per capture each)
+        # 5. enrich  6. embed (one batch per capture each)
         enrichments = self.enricher.enrich(contents)
         embeddings = self.embedder.embed_documents(contents)
 
@@ -43,9 +50,9 @@ class WritePipeline:
                 entities=enrichment.entities,
                 embedding=embedding,
             )
-            # 6. link (against the store + earlier notes from this same capture)
+            # 7. link (against the store + earlier notes from this same capture)
             links = self.linker.link(note, self.store, siblings=list(notes))
-            # 7. store
+            # 8. store
             self.store.save_note(note)
             self.store.add_links(note.id, links)
             note.links = list(self.store.get_notes([note.id])[note.id].links)

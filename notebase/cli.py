@@ -9,7 +9,7 @@ import sys
 from dataclasses import asdict
 
 from notebase.app import Config, Notebase
-from notebase.models import FindResult, WriteResult
+from notebase.models import Attachment, FindResult, WriteResult
 from notebase.storage.base import EmbeddingMismatch
 
 
@@ -19,7 +19,15 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="verb", required=True)
 
     w = sub.add_parser("write", help="put a thought in")
-    w.add_argument("text", nargs="?", help="the thought (reads stdin if omitted)")
+    w.add_argument("text", nargs="?", help="the thought (reads stdin if omitted and no files)")
+    w.add_argument(
+        "-a",
+        "--attach",
+        action="append",
+        default=[],
+        metavar="FILE",
+        help="attach a file (image, audio, PDF, ...); repeat for several",
+    )
     w.add_argument("--source", default="typed")
 
     f = sub.add_parser("find", help="recall by association")
@@ -27,6 +35,12 @@ def main(argv: list[str] | None = None) -> int:
     f.add_argument("-k", type=int, default=5, help="number of seed notes")
 
     args = parser.parse_args(argv)
+    attachments: list[Attachment] = []
+    if args.verb == "write":
+        try:
+            attachments = [Attachment.from_path(p) for p in args.attach]
+        except OSError as e:
+            parser.error(f"cannot attach {e.filename}: {e.strerror}")
     _quiet_model_loading()
     try:
         app = Notebase.from_config(Config())
@@ -35,10 +49,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     if args.verb == "write":
-        text = args.text if args.text is not None else sys.stdin.read()
-        if not text.strip():
+        text = args.text
+        if text is None:
+            text = "" if attachments else sys.stdin.read()
+        if not text.strip() and not attachments:
             parser.error("nothing to write")
-        result = app.write(text, source=args.source)
+        result = app.write(text, source=args.source, attachments=attachments)
         _print_write(result, args.json)
     else:
         result = app.find(args.cue, k=args.k)
@@ -61,7 +77,9 @@ def _print_write(result: WriteResult, as_json: bool) -> None:
     if as_json:
         print(json.dumps([_note_json(n) for n in result.notes], default=str, ensure_ascii=False))
         return
-    print(f"captured {result.capture.id} -> {len(result.notes)} atomic note(s)")
+    files = len(result.capture.attachments)
+    with_files = f" with {files} file(s)" if files else ""
+    print(f"captured {result.capture.id}{with_files} -> {len(result.notes)} atomic note(s)")
     for n in result.notes:
         print(f"  • {n.id}  tags={n.tags}  links={len(n.links)}")
         print(f"    {_short(n.content)}")

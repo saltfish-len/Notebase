@@ -26,24 +26,25 @@ Notebase moves all organization to the system:
 
 ### ✍️ Write
 
-You type, paste, or dictate anything: a half-formed idea, a meeting dump, a quote, a link with a comment. You don't pick a title, folder, or tag.
+You type, paste, or dictate anything: a half-formed idea, a meeting dump, a quote, a link with a comment. You can attach files too, such as a photo of a whiteboard, a voice memo or a PDF. You don't pick a title, folder, or tag.
 
 The system then processes the input:
 
 1. **Capture.** The raw input is stored unchanged, so nothing is ever lost.
-2. **Atomize.** The input is split into *atomic notes*, each holding one self-contained idea. A long brain-dump might become five notes. A short thought stays as one.
-3. **Contextualize.** Each atomic note is rewritten just enough to be understood on its own, for example by resolving "it" and "that meeting" from the surrounding text, while keeping your voice.
-4. **Enrich.** Each note gets:
+2. **Normalize.** Attached files (images, audio, PDFs) are turned into text, so the steps below work on words. For now this is a naive alt text made from the file name; real image descriptions and transcripts come later.
+3. **Atomize.** The input is split into *atomic notes*, each holding one self-contained idea. A long brain-dump might become five notes. A short thought stays as one.
+4. **Contextualize.** Each atomic note is rewritten just enough to be understood on its own, for example by resolving "it" and "that meeting" from the surrounding text, while keeping your voice.
+5. **Enrich.** Each note gets:
    - **Keywords**: terms you might use later to look for it, including synonyms you didn't write
    - **Tags**: broad topic labels, generated and normalized against existing tags
    - **Entities**: people, places, projects, books, URLs
    - **Metadata**: creation time, source (typed, pasted, voice, web clip), and a link back to the raw capture
-5. **Embed.** Each note is turned into a vector for semantic search.
-6. **Link.** The new note is compared with existing notes, and weighted associative edges are created to its nearest neighbours. These edges are what make up the graph.
-7. **Store.** Notes, vectors, and edges are saved to a store that supports semantic search.
+6. **Embed.** Each note is turned into a vector for semantic search.
+7. **Link.** The new note is compared with existing notes, and weighted associative edges are created to its nearest neighbours. These edges are what make up the graph.
+8. **Store.** Notes, vectors, and edges are saved to a store that supports semantic search.
 
 ```
-raw input ──► capture ──► atomize ──► contextualize ──► enrich ──► embed ──► link ──► store
+raw input ──► capture ──► normalize ──► atomize ──► contextualize ──► enrich ──► embed ──► link ──► store
                 │                                                                       │
                 └────────────────────── raw text kept for provenance ───────────────────┘
 ```
@@ -151,10 +152,10 @@ notebase/
 ├── find.py             # FindPipeline  (orchestration only)
 ├── models.py           # Capture, Note, Link, Query, FindResult, ...
 ├── blackbox/
-│   ├── interfaces.py   # the 10 black-box Protocols
+│   ├── interfaces.py   # the 11 black-box Protocols
 │   ├── embedders.py    # real Embedder (Qwen3 via sentence-transformers)
 │   ├── llm.py          # real Atomizer + Enricher (Claude)
-│   └── stubs.py        # placeholder implementations
+│   └── stubs.py        # placeholder implementations (incl. the v0 Normalizer)
 ├── storage/
 │   ├── base.py         # NoteStore contract
 │   ├── mongo.py        # MongoDB + Vector Search
@@ -176,6 +177,13 @@ notebase write "Coffee in the afternoon hurts deep sleep."
 notebase write "Spaced repetition helps long-term retention."
 notebase find "怎么记得更牢"
 ```
+
+```bash
+notebase write "Sprint plan we agreed on." -a ~/Desktop/whiteboard_sprint_plan.jpg
+```
+
+`-a` attaches a file (repeat it for several). For now the file is only described by its name, as
+`[image: whiteboard sprint plan (whiteboard_sprint_plan.jpg)]`, and only a reference to it is kept.
 
 ```
 ◆ ...
@@ -235,6 +243,8 @@ Open work is tracked in [GitHub issues](https://github.com/saltfish-len/Notebase
   - [x] Real embedding model (Qwen3-Embedding-0.6B, local)
   - [x] LLM Atomizer + Enricher (Claude Haiku 5.5; see [docs/llm.md](docs/llm.md))
   - [x] Measure Haiku vs Sonnet for the LLM boxes: Haiku is enough after prompt fixes ([#1](https://github.com/saltfish-len/Notebase/issues/1))
+  - [x] Normalizer v0: attach files to a write; naive alt text from the file name
+  - [ ] Real Normalizer: image descriptions and OCR, audio transcripts, PDF and web-page text; keep file bytes
   - [ ] Find-side boxes: Labeler, Clusterer, Spreader, QueryInterpreter ([#4](https://github.com/saltfish-len/Notebase/issues/4))
   - [ ] Chinese keyword search, vector index lag ([#6](https://github.com/saltfish-len/Notebase/issues/6))
   - [ ] Re-embed when switching embedding models ([#5](https://github.com/saltfish-len/Notebase/issues/5))
