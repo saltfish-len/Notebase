@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "notebase-web",
+      "runtimeExecutable": ".venv/bin/notebase-web",
+      "runtimeArgs": [],
+      "env": { "NOTEBASE_LLM": "none" },
+      "port": 8765
+    }
+  ]
+}

@@ -194,6 +194,14 @@ pip install torch --index-url https://download.pytorch.org/whl/cpu
 pip install -e .
 ```
 
+Or, with [uv](https://docs.astral.sh/uv/), skip the venv step above and run one command on either platform. It
+installs the versions pinned in `uv.lock` (on Linux the CPU build of PyTorch, so use pip if you want CUDA) and the
+`dev` and `mcp` extras:
+
+```bash
+uv sync --all-extras
+```
+
 Then add a Claude API key from the [Claude Console](https://platform.claude.com/). Without one, everything still
 works, but notes are split by paragraph, keywords are plain word counts and images are described only by their file
 name (each write prints a warning; `export NOTEBASE_LLM=none` turns the LLM off quietly).
@@ -248,8 +256,9 @@ Embedding never sends notes anywhere, but the LLM boxes send text and attached i
 
 Things to know:
 
-* Each `notebase` command loads the model again, so it takes about 7 s (measured on a cloud container CPU), even for a find. A
-  long-running server will fix this ([#2](https://github.com/saltfish-len/Notebase/issues/2)).
+* Each `notebase` command loads the model again, so it takes about 7 s (measured on a cloud container CPU), even for a find.
+  `notebase-web` and `notebase-mcp` load it once and stay fast; the CLI doesn't use a running server yet
+  ([#2](https://github.com/saltfish-len/Notebase/issues/2)).
 * If MongoDB isn't running, commands stop with "cannot reach MongoDB"; run `docker compose up -d` in the folder.
 * A database created with an older `docker-compose.yml` (before `hostname: mongodb`) won't start after the
   container is recreated. Early versions only: `docker compose down -v && docker compose up -d` starts over
@@ -377,8 +386,9 @@ Open work is tracked in [GitHub issues](https://github.com/saltfish-len/Notebase
   - [ ] Chinese keyword search, vector index lag ([#6](https://github.com/saltfish-len/Notebase/issues/6))
   - [ ] Re-embed when switching embedding models ([#5](https://github.com/saltfish-len/Notebase/issues/5))
 - [ ] **v1: Graph view**
-  - [ ] Long-running server with a write/find HTTP API ([#2](https://github.com/saltfish-len/Notebase/issues/2))
-  - [ ] Web UI: one input for write and find, zoomed-in subgraph, click to re-centre ([#3](https://github.com/saltfish-len/Notebase/issues/3))
+  - [x] Long-running server with a write/find HTTP API (`notebase-web`)
+  - [x] Web UI: one input for write and find, zoomed-in subgraph, click to re-centre ([#3](https://github.com/saltfish-len/Notebase/issues/3))
+  - [ ] CLI talks to a running server instead of loading the model ([#2](https://github.com/saltfish-len/Notebase/issues/2))
 - [ ] **v2: Better memory**
   - [ ] Superseding and versioning of thoughts
   - [ ] Recency and frequency weighting (often-recalled notes get stronger)
