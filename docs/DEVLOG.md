@@ -118,3 +118,7 @@ State at the end: 80 fast tests pass (4 new), and the MongoDB tests pass (1 new:
 PR #10 (`notebase-web` and `notebase import`) was merged into `claude/nice-brahmagupta-4z8rkw` instead of `main`, so the web UI never reached main. Merging the whole branch conflicts across the stores, the write pipeline and the docs, because it and PR #9 both built an Obsidian importer with its own de-duplication (`Capture.origin` vs. `Capture.fingerprint`). Only the web UI was brought over: `server.py`, `jsonio.py`, `web/index.html`, `tests/test_server.py` unchanged, plus the `notebase-web` script, the `web/*` package data and `Config.files_dir`. `notebase import` (the CLI importer) stays on that branch; the MCP `import_files` covers vault imports on main.
 
 State at the end: 88 fast tests pass (8 server tests). Run against the real database (94 notes): `#all` drew all 94 notes in 9 clusters in 64 ms.
+
+### 2026-11-03: records caught up with the web UI
+
+Docs only. The web UI covers [#3](https://github.com/saltfish-len/Notebase/issues/3) (closed) and most of [#2](https://github.com/saltfish-len/Notebase/issues/2): `notebase-web` is the long-running server with `POST /write` and `POST /find`. What is left of #2 is the CLI using a running server instead of loading the model itself, so #2 stays open for that and the README roadmap now lists it as its own item. `.claude/launch.json` (the `notebase-web` preview config) is committed; `.claude/settings.local.json` is ignored as per-machine.
