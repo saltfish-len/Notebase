@@ -187,6 +187,12 @@ class MongoNoteStore:
         )
         return [ScoredNote(_doc_to_note(d), d["_score"]) for d in cursor]
 
+    def list_notes(self, tags=(), limit=1000):
+        tags = list(tags)
+        query = {"tags": {"$in": tags}} if tags else {}
+        cursor = self.notes.find(query, {"embedding": 0}).sort("created_at", -1).limit(limit)
+        return [_doc_to_note(d) for d in cursor]
+
     def count(self) -> int:
         return self.notes.count_documents({})
 

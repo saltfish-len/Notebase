@@ -55,7 +55,10 @@ imported. It imports at most `limit` files per call; call again with the returne
 next_offset until it is null. Files imported before (same contents) are skipped, so an \
 interrupted import can simply be run again.
 - find: recall by association. Give a cue in natural language (any language); "#tag" filters \
-by tag. Results come back as clusters of related notes; seed notes matched the cue directly, \
+by tag, and a cue of tags only returns every note with those tags. "#all" returns the whole \
+graph (all notes and links), "#all #tag" every note with that tag; use it only when the user \
+asks for everything, since the result can be large. \
+Results come back as clusters of related notes; seed notes matched the cue directly, \
 the rest were reached through links.
 """
 
@@ -167,7 +170,8 @@ class NotebaseTools:
     # ------------------------------------------------------------------- find
     def find(self, cue: str, k: int = 5) -> dict:
         """Recall by association: seed notes for the cue plus notes reached over links,
-        grouped into labelled clusters."""
+        grouped into labelled clusters. "#tag" filters by tag; "#all" returns the whole graph
+        (every note and link), "#all #tag" every note with that tag; ``k`` is ignored then."""
         if not cue.strip():
             raise ValueError("empty cue")
         app = self.app

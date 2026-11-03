@@ -53,6 +53,11 @@ class NoteStore(Protocol):
         self, terms: Iterable[str], k: int, tags: Iterable[str] = ()
     ) -> list[ScoredNote]: ...
 
+    def list_notes(self, tags: Iterable[str] = (), limit: int = 1000) -> list[Note]:
+        """Notes with any of ``tags`` (every note if none), newest first, at most ``limit``.
+        Embeddings may be left out: callers use this for the graph, not for similarity."""
+        ...
+
     def count(self) -> int: ...
 
     def top_tags(self, limit: int = 200) -> list[str]:

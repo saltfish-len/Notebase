@@ -36,7 +36,7 @@ def main(argv: list[str] | None = None) -> int:
     w.add_argument("--source", default="typed")
 
     f = sub.add_parser("find", help="recall by association")
-    f.add_argument("cue", help="anything that might bring it back; #tag filters by tag")
+    f.add_argument("cue", help="anything that might bring it back; #tag filters by tag, #all returns the whole graph")
     f.add_argument("-k", type=int, default=5, help="number of seed notes")
 
     args = parser.parse_args(argv)

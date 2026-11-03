@@ -88,8 +88,8 @@ flowchart LR
 
 | Black box | Contract | Current stub | Intended real version |
 |---|---|---|---|
-| QueryInterpreter | `str -> Query` | tokenize + embed; `#tag` becomes a filter | LLM query expansion, time and entity filters ("last summer", "from Alice") |
-| Retriever | `(Query, store, k) -> list[ScoredNote]` | reciprocal-rank fusion of vector and keyword hits | tuned hybrid search, reranker |
+| QueryInterpreter | `str -> Query` | tokenize + embed; `#tag` becomes a filter; `#all` sets `whole_graph`, and the pipeline then skips Retriever and Spreader and returns `list_notes(tags)` | LLM query expansion, time and entity filters ("last summer", "from Alice") |
+| Retriever | `(Query, store, k) -> list[ScoredNote]` | reciprocal-rank fusion of vector and keyword hits; a cue of tags only seeds every tagged note | tuned hybrid search, reranker |
 | Spreader | `(seeds, store) -> {id: activation}` | BFS, `activation × weight × decay` per hop | spreading activation with recency and frequency weighting |
 | Clusterer | `notes -> list[list[id]]` | connected components over strong links | community detection (Louvain/Leiden) or embedding clustering |
 | Labeler | `list[Note] -> str` | most common tags | LLM summary label |
@@ -149,6 +149,7 @@ on the note itself.
 | `note_embedding` on `embedding` (cosine) + filter `tags` | Vector Search | `vector_search` → Linker, Retriever |
 | `note_text` on `content`, `keywords` | text | `keyword_search` → Retriever |
 | `links.to` | B-tree | reverse link lookups |
+| none (collection scan on `tags`, sort on `created_at`) | | `list_notes` → tag-only and `#all` cues |
 | `capture_id` | B-tree | provenance |
 
 Links are **mirrored**: when A links to B, B also gets a link to A, because
