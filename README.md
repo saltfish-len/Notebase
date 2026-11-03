@@ -344,7 +344,7 @@ integration tests and the real-model tests.
 
 ## Roadmap
 
-Open work is tracked in [GitHub issues](https://github.com/saltfish-len/Notebase/issues). Decisions and history are in [docs/DEVLOG.md](docs/DEVLOG.md).
+Open work is tracked in [GitHub issues](https://github.com/saltfish-len/Notebase/issues). Decisions and history are in [docs/DEVLOG.md](docs/DEVLOG.md). Notes on related research and what it means for this design are in [docs/papers/](docs/papers/).
 
 - [x] **v0: Skeleton**: full write/find pipelines on MongoDB, with every algorithm as a stubbed black box
 - [ ] **v0.x: Fill the black boxes**
