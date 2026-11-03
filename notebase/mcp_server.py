@@ -4,12 +4,14 @@ This is another front end for the same two verbs, like the CLI. The tools are:
 
 - ``write``: one thought, optionally with files attached
 - ``write_batch``: many thoughts in one call (bulk import of text the client already has)
-- ``import_files``: bulk import of files and folders on this machine (Markdown, text, images),
-  read here so the file contents never pass through the client's context
+- ``import_files``: bulk import of files and folders on this machine (Markdown and Obsidian
+  vaults, text, images; see ``notebase.importing``), read here so the file contents never pass
+  through the client's context
 - ``find``: recall by association
 
 ``write_batch`` and ``import_files`` are batch forms of *write*, not new verbs. Each item is
-its own capture, and one failing item does not stop the others.
+its own capture, one failing item does not stop the others, and an item that was already
+written (same file contents, same batch item) is skipped.
 
 Run it with ``notebase-mcp`` (stdio). The tool logic lives in ``NotebaseTools`` so it can be
 tested without the ``mcp`` package; ``build_server`` only registers it.
@@ -18,14 +20,15 @@ tested without the ``mcp`` package; ``build_server`` only registers it.
 from __future__ import annotations
 
 import functools
+import hashlib
 import logging
 import os
 import sys
 import threading
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Callable
 
+from notebase.importing import Vault, plan_import, prepare
 from notebase.models import Attachment, FindResult, WriteResult
 from notebase.storage.base import EmbeddingMismatch
 
@@ -36,9 +39,6 @@ except ImportError:  # pragma: no cover - pymongo is a dependency
 
 log = logging.getLogger(__name__)
 
-TEXT_SUFFIXES = {".md", ".markdown", ".txt", ".text", ".org", ".rst"}
-IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".heic", ".heif"}
-MAX_TEXT_BYTES = 200_000  # a larger text file is almost certainly not a note
 MAX_BATCH = 50  # items per call, so one call stays well inside client timeouts
 
 INSTRUCTIONS = """\
@@ -46,11 +46,14 @@ Notebase is the user's associative memory. It has two verbs: write and find.
 
 - write: store a thought. Pass the user's words as they are; Notebase splits the text into \
 atomic notes, tags and links them itself. Do not add titles, folders or tags.
-- write_batch: store several separate thoughts at once (each item becomes its own capture).
-- import_files: import Markdown/text files or images from paths or folders on this machine. \
-Run it with dry_run=true first to show the user what would be imported. It imports at most \
-`limit` files per call; call again with the returned next_offset until it is null. \
-Importing the same files twice creates duplicates.
+- write_batch: store several separate thoughts at once (each item becomes its own capture). \
+An item identical to one written by an earlier batch is skipped, so a batch can be retried.
+- import_files: import Markdown/text files or images from paths or folders on this machine, \
+including Obsidian vaults (links become the text Obsidian shows, embedded images are \
+attached to their note). Run it with dry_run=true first to show the user what would be \
+imported. It imports at most `limit` files per call; call again with the returned \
+next_offset until it is null. Files imported before (same contents) are skipped, so an \
+interrupted import can simply be run again.
 - find: recall by association. Give a cue in natural language (any language); "#tag" filters \
 by tag. Results come back as clusters of related notes; seed notes matched the cue directly, \
 the rest were reached through links.
@@ -84,16 +87,25 @@ class NotebaseTools:
         self, text: str = "", attachments: list[str] | None = None, source: str = "mcp"
     ) -> dict:
         """Store one thought (text, files, or both). Returns the atomic notes it became."""
-        files = [Attachment.from_path(p) for p in attachments or []]
+        return self._write(text, [Attachment.from_path(p) for p in attachments or []], source)
+
+    def _write(
+        self, text: str, files: list[Attachment], source: str, fingerprint: str | None = None
+    ) -> dict:
         if not text.strip() and not files:
             raise ValueError("nothing to write: give text, attachments, or both")
         app = self.app
         with _unavailable_on_infra_errors():
-            return _write_json(app.write(text, source=source, attachments=files))
+            result = app.write(text, source=source, attachments=files, fingerprint=fingerprint)
+        return _write_json(result)
 
-    def write_batch(self, items: list[dict], source: str = "mcp") -> dict:
+    def write_batch(
+        self, items: list[dict], source: str = "mcp", skip_duplicates: bool = True
+    ) -> dict:
         """Store many thoughts; each item is ``{"text": ..., "attachments": [...], "source": ...}``
-        (only ``text`` or ``attachments`` is required). Failures are reported per item."""
+        (only ``text`` or ``attachments`` is required). Failures are reported per item. An item
+        with the same text and files as one written by an earlier batch is skipped (reported as
+        ``duplicate``) unless ``skip_duplicates`` is false."""
         if len(items) > MAX_BATCH:
             raise ValueError(f"at most {MAX_BATCH} items per call; split the batch")
         results = []
@@ -101,11 +113,10 @@ class NotebaseTools:
             if isinstance(item, str):
                 item = {"text": item}
             try:
-                r = self.write(
-                    text=item.get("text", ""),
-                    attachments=item.get("attachments"),
-                    source=item.get("source", source),
-                )
+                text = item.get("text", "")
+                files = [Attachment.from_path(p) for p in item.get("attachments") or []]
+                fp = _batch_fingerprint(text, files) if skip_duplicates else None
+                r = self._write(text, files, item.get("source", source), fp)
                 results.append({"index": i, "ok": True, **r})
             except Unavailable:
                 raise
@@ -123,23 +134,28 @@ class NotebaseTools:
         limit: int = MAX_BATCH,
     ) -> dict:
         """Import files and folders: each text file (.md, .txt, ...) becomes one capture of its
-        contents, each image one capture with the image attached. Hidden files and folders
-        (e.g. .obsidian, .git) are skipped. Files are taken in sorted order, ``limit`` per call."""
+        contents, each image one capture with the image attached. Markdown is imported as the
+        text Obsidian shows: [[Note|alias]] reads "alias", [[Note#Heading]] "Note > Heading",
+        front matter and %%comments%% are dropped, code is kept as written, and embedded images
+        (![[photo.png]], ![](photo.png)) are attached to their note instead of imported alone.
+        Hidden files and folders (e.g. .obsidian, .git) are skipped. A file whose contents were
+        imported before is skipped (reported as ``duplicate``). Files are taken in sorted order,
+        ``limit`` per call. ``dry_run`` lists the files without checking for duplicates."""
         limit = max(1, min(limit, MAX_BATCH))
-        found, skipped = collect_files(paths, recursive)
+        found, skipped = plan_import(paths, recursive)
         page = found[offset : offset + limit]
         next_offset = offset + limit if offset + limit < len(found) else None
         head = {"total": len(found), "offset": offset, "next_offset": next_offset}
         if dry_run:
             return {**head, "dry_run": True, "files": [str(p) for p in page], "skipped": skipped}
 
+        vault = Vault.for_paths(paths)
         results = []
         for p in page:
             try:
-                if p.suffix.lower() in IMAGE_SUFFIXES:
-                    r = self.write("", attachments=[str(p)], source="import")
-                else:
-                    r = self.write(_read_text(p), source="import")
+                item = prepare(p, vault)
+                files = [Attachment.from_path(a) for a in item.attachments]
+                r = self._write(item.text, files, "import", item.fingerprint)
                 results.append({"path": str(p), "ok": True, **r})
             except Unavailable:
                 raise
@@ -174,60 +190,12 @@ class _unavailable_on_infra_errors:
         return False
 
 
-# ---------------------------------------------------------------------------- files
-
-
-def collect_files(paths: list[str], recursive: bool = True) -> tuple[list[Path], list[dict]]:
-    """Expand paths and folders into importable files (sorted, deduplicated)."""
-    found: dict[Path, None] = {}
-    skipped: list[dict] = []
-    for raw in paths:
-        p = Path(raw).expanduser().resolve()
-        if p.is_dir():
-            walker = p.rglob("*") if recursive else p.glob("*")
-            for f in sorted(walker):
-                if f.is_file() and not _hidden(f.relative_to(p)) and _importable(f):
-                    found.setdefault(f)
-        elif p.is_file():
-            if _importable(p):
-                found.setdefault(p)
-            else:
-                skipped.append({"path": str(p), "reason": "unsupported file type"})
-        else:
-            skipped.append({"path": str(p), "reason": "not found"})
-
-    kept = []
-    for f in found:
-        if f.suffix.lower() in TEXT_SUFFIXES and f.stat().st_size > MAX_TEXT_BYTES:
-            skipped.append({"path": str(f), "reason": f"larger than {MAX_TEXT_BYTES} bytes"})
-        else:
-            kept.append(f)
-    return kept, skipped
-
-
-def _importable(p: Path) -> bool:
-    return p.suffix.lower() in TEXT_SUFFIXES | IMAGE_SUFFIXES
-
-
-def _hidden(rel: Path) -> bool:
-    return any(part.startswith(".") for part in rel.parts)
-
-
-def _read_text(p: Path) -> str:
-    """File contents, with the file name as a heading when the text has none, so the
-    Atomizer knows what an untitled list or fragment is about."""
-    text = p.read_text(encoding="utf-8", errors="replace").strip()
-    if not text:
-        raise ValueError("empty file")
-    if not text.startswith("#"):
-        text = f"# {p.stem}\n\n{text}"
-    return text
-
-
 # ----------------------------------------------------------------------------- json
 
 
 def _write_json(result: WriteResult) -> dict:
+    if result.duplicate:
+        return {"capture_id": result.capture.id, "duplicate": True, "notes": []}
     return {
         "capture_id": result.capture.id,
         "notes": [
@@ -272,13 +240,22 @@ def _find_json(result: FindResult) -> dict:
 
 
 def _batch_summary(results: list[dict]) -> dict:
-    ok = [r for r in results if r["ok"]]
+    ok = [r for r in results if r["ok"] and not r.get("duplicate")]
+    duplicates = sum(1 for r in results if r.get("duplicate"))
     return {
         "written": len(ok),
-        "failed": len(results) - len(ok),
+        "duplicates": duplicates,
+        "failed": sum(1 for r in results if not r["ok"]),
         "notes": sum(len(r["notes"]) for r in ok),
         "results": results,
     }
+
+
+def _batch_fingerprint(text: str, files: list[Attachment]) -> str:
+    h = hashlib.sha256(text.strip().encode())
+    for f in files:
+        h.update(b"\0" + f.sha256.encode())
+    return "item:" + h.hexdigest()
 
 
 def _err(e: Exception) -> str:

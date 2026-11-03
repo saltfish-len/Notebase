@@ -32,6 +32,9 @@ class InMemoryNoteStore:
     def save_capture(self, capture: Capture) -> None:
         self.captures[capture.id] = capture
 
+    def find_capture(self, fingerprint: str) -> Capture | None:
+        return next((c for c in self.captures.values() if c.fingerprint == fingerprint), None)
+
     def save_note(self, note: Note) -> None:
         self.notes[note.id] = note
 

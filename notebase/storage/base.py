@@ -30,6 +30,10 @@ class NoteStore(Protocol):
         ...
 
     # -- read side -------------------------------------------------------------
+    def find_capture(self, fingerprint: str) -> Capture | None:
+        """The finished capture with this fingerprint, if any."""
+        ...
+
     def get_notes(self, ids: Iterable[str]) -> dict[str, Note]: ...
 
     def vector_search(

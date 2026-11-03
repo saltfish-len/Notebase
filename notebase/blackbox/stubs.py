@@ -27,22 +27,39 @@ class FilenameAltTextNormalizer:
     ``[image: whiteboard meeting notes (whiteboard_meeting-notes.jpg)]``. The
     markers go on new lines right after the last paragraph of the typed text,
     so a paragraph split keeps a caption and its files in one note. With no
-    typed text, each attachment is its own paragraph (and its own note).
+    typed text, each attachment is its own paragraph (and its own note). A file
+    the text embeds as ``![[file name]]`` (as an Obsidian import does) gets its
+    marker in that place instead.
     The file's content is never looked at.
     """
 
     def normalize(self, capture: Capture) -> str:
-        return place_markers(capture.text, [alt_text_marker(a) for a in capture.attachments])
+        return place_markers(
+            capture.text, capture.attachments, [alt_text_marker(a) for a in capture.attachments]
+        )
 
 
-def place_markers(text: str, markers: list[str]) -> str:
-    """Typed text, then one marker per line; markers alone are one paragraph each."""
+def embed_placeholder(name: str) -> str:
+    """Where in the text a file sits: ``![[name]]``, Obsidian's embed syntax."""
+    return f"![[{name}]]"
+
+
+def place_markers(text: str, attachments: list[Attachment], markers: list[str]) -> str:
+    """Each marker replaces its file's ``![[name]]`` in the text; the rest follow the typed
+    text, one per line (markers alone are one paragraph each)."""
     text = text.strip()
-    if not markers:
+    rest = []
+    for attachment, marker in zip(attachments, markers):
+        placeholder = embed_placeholder(attachment.name)
+        if placeholder in text:
+            text = text.replace(placeholder, marker, 1)
+        else:
+            rest.append(marker)
+    if not rest:
         return text
     if not text:
-        return "\n\n".join(markers)
-    return text + "\n" + "\n".join(markers)
+        return "\n\n".join(rest)
+    return text + "\n" + "\n".join(rest)
 
 
 _FILENAME_SEPARATORS = re.compile(r"[\s_\-.]+")

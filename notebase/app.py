@@ -55,10 +55,17 @@ class Notebase:
         self._find = find_pipeline
 
     def write(
-        self, text: str = "", source: str = "typed", attachments: list[Attachment] | None = None
+        self,
+        text: str = "",
+        source: str = "typed",
+        attachments: list[Attachment] | None = None,
+        fingerprint: str | None = None,
     ) -> WriteResult:
-        """Put a thought in: typed text, files (images, audio, PDFs, ...), or both."""
-        return self._write.write(text, source, attachments)
+        """Put a thought in: typed text, files (images, audio, PDFs, ...), or both.
+
+        ``fingerprint`` identifies the source (an imported file, a batch item); a write whose
+        fingerprint was already written does nothing and returns ``duplicate=True``."""
+        return self._write.write(text, source, attachments, fingerprint)
 
     def find(self, text: str, k: int = 5) -> FindResult:
         return self._find.find(text, k)

@@ -4,7 +4,8 @@ import json
 import pytest
 
 from notebase import Notebase
-from notebase.mcp_server import MAX_BATCH, NotebaseTools, build_server, collect_files
+from notebase.importing import plan_import
+from notebase.mcp_server import MAX_BATCH, NotebaseTools, build_server
 from notebase.storage import InMemoryNoteStore
 
 
@@ -43,8 +44,25 @@ def test_write_batch_reports_failures_per_item(tools):
     r = tools.write_batch(
         [{"text": "Mitochondria are the powerhouse of the cell."}, {"text": ""}, "plain string item"]
     )
-    assert (r["written"], r["failed"]) == (2, 1)
+    assert (r["written"], r["duplicates"], r["failed"]) == (2, 0, 1)
     assert r["results"][1]["ok"] is False and "nothing to write" in r["results"][1]["error"]
+    assert tools.store.count() == 2
+
+
+def test_write_batch_skips_items_written_before(tools):
+    items = [{"text": "Rain smells of petrichor."}, {"text": "Snow muffles sound."}]
+    tools.write_batch(items[:1])
+    again = tools.write_batch(items)  # a retried batch
+    assert (again["written"], again["duplicates"]) == (1, 1)
+    assert again["results"][0]["duplicate"] is True and again["results"][0]["notes"] == []
+    assert tools.store.count() == 2
+    forced = tools.write_batch(items[:1], skip_duplicates=False)
+    assert forced["written"] == 1 and tools.store.count() == 3
+
+
+def test_single_write_does_not_deduplicate(tools):
+    tools.write("Same thought.")
+    tools.write("Same thought.")
     assert tools.store.count() == 2
 
 
@@ -67,12 +85,12 @@ def vault(tmp_path):
     return tmp_path
 
 
-def test_collect_files_skips_hidden_and_unsupported(vault):
-    files, skipped = collect_files([str(vault), str(vault / "skip.py"), str(vault / "nope.md")])
+def test_plan_skips_hidden_and_unsupported(vault):
+    files, skipped = plan_import([str(vault), str(vault / "skip.py"), str(vault / "nope.md")])
     names = [f.name for f in files]
     assert names == ["a.md", "b.txt", "empty.md", "c.md", "photo.png"]
     assert {s["reason"] for s in skipped} == {"unsupported file type", "not found"}
-    flat, _ = collect_files([str(vault)], recursive=False)
+    flat, _ = plan_import([str(vault)], recursive=False)
     assert [f.name for f in flat] == ["a.md", "b.txt", "empty.md"]
 
 
@@ -87,6 +105,10 @@ def test_import_pages_and_reports_failures(tools, vault):
     assert first["next_offset"] == 3 and first["written"] == 2 and first["failed"] == 1  # empty.md
     rest = tools.import_files([str(vault)], offset=first["next_offset"], limit=3)
     assert rest["next_offset"] is None and rest["written"] == 2
+    notes = tools.store.count()
+    again = tools.import_files([str(vault)])  # importing the vault again adds nothing
+    assert (again["written"], again["duplicates"], again["failed"]) == (0, 4, 1)
+    assert tools.store.count() == notes
     captures = tools.store.captures.values()
     assert all(c.source == "import" for c in captures)
     assert any(c.text.startswith("# c\n\nTea") for c in captures)  # file name added as heading
