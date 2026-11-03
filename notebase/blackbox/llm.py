@@ -85,7 +85,7 @@ class VisionNormalizer:
 
     def normalize(self, capture: Capture) -> str:
         markers = [self._marker(a, capture.text.strip()) for a in capture.attachments]
-        return place_markers(capture.text, markers)
+        return place_markers(capture.text, capture.attachments, markers)
 
     def _marker(self, attachment: Attachment, text: str) -> str:
         if attachment.kind != "image":

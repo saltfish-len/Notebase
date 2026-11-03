@@ -76,3 +76,15 @@ def test_mongo_keeps_capture_attachments(store):
     assert doc["text"] == "Sprint plan."
     assert doc["attachments"][0]["name"] == "board.jpg"
     assert doc["normalized"] == "Sprint plan.\n[image: board (board.jpg)]"
+
+
+def test_mongo_finds_a_capture_by_fingerprint(store):
+    from notebase.models import Attachment
+
+    app = Notebase.with_stubs(store, embedding_dim=64)
+    board = Attachment(name="board.jpg", media_type="image/jpeg", size=3, sha256="abc")
+    first = app.write("Sprint plan.", attachments=[board], fingerprint="file:123")
+    again = app.write("Sprint plan.", attachments=[board], fingerprint="file:123")
+    assert again.duplicate and again.capture.id == first.capture.id
+    assert again.capture.attachments[0].name == "board.jpg"
+    assert store.captures.count_documents({}) == 1

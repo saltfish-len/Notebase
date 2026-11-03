@@ -81,6 +81,9 @@ class Capture:
     source: str = "typed"  # typed | pasted | voice | web-clip | import
     attachments: list[Attachment] = field(default_factory=list)
     normalized: str | None = None
+    # identity of the source (e.g. a hash of the imported file), so the same source is not
+    # written twice; set only once the write has finished, so a crashed write can be retried
+    fingerprint: str | None = None
     id: str = field(default_factory=lambda: new_id("c"))
     created_at: datetime = field(default_factory=utcnow)
 
@@ -132,6 +135,9 @@ class Note:
 class WriteResult:
     capture: Capture
     notes: list[Note]
+    # True when the fingerprint matched an earlier capture: nothing was written, ``capture``
+    # is that earlier capture and ``notes`` is empty
+    duplicate: bool = False
 
 
 # ---------------------------------------------------------------------------- find

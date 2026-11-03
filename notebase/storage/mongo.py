@@ -26,7 +26,7 @@ from pymongo import ASCENDING, TEXT, MongoClient
 from pymongo.collection import Collection
 from pymongo.operations import SearchIndexModel
 
-from notebase.models import Capture, Entity, Link, Note, ScoredNote
+from notebase.models import Attachment, Capture, Entity, Link, Note, ScoredNote
 from notebase.storage.base import EmbeddingMismatch
 
 VECTOR_INDEX = "note_embedding"
@@ -69,6 +69,7 @@ class MongoNoteStore:
     def ensure_indexes(self, wait: bool = True, timeout_s: float = 120) -> None:
         self.notes.create_index([("content", TEXT), ("keywords", TEXT)], name="note_text")
         self.notes.create_index([("capture_id", ASCENDING)])
+        self.captures.create_index([("fingerprint", ASCENDING)], sparse=True)
         self.notes.create_index([("links.to", ASCENDING)])
 
         existing = {ix["name"]: ix for ix in self.notes.list_search_indexes()}
@@ -114,6 +115,10 @@ class MongoNoteStore:
         doc = asdict(capture)
         doc["_id"] = doc.pop("id")
         self.captures.replace_one({"_id": doc["_id"]}, doc, upsert=True)
+
+    def find_capture(self, fingerprint: str) -> Capture | None:
+        doc = self.captures.find_one({"fingerprint": fingerprint})
+        return _doc_to_capture(doc) if doc else None
 
     def save_note(self, note: Note) -> None:
         doc = _note_to_doc(note)
@@ -202,6 +207,18 @@ def _note_to_doc(note: Note) -> dict[str, Any]:
     doc = asdict(note)
     doc["_id"] = doc.pop("id")
     return doc
+
+
+def _doc_to_capture(doc: dict[str, Any]) -> Capture:
+    return Capture(
+        id=doc["_id"],
+        text=doc["text"],
+        source=doc.get("source", "typed"),
+        attachments=[Attachment(**a) for a in doc.get("attachments", [])],
+        normalized=doc.get("normalized"),
+        fingerprint=doc.get("fingerprint"),
+        created_at=doc["created_at"],
+    )
 
 
 def _doc_to_note(doc: dict[str, Any]) -> Note:

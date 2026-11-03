@@ -161,7 +161,8 @@ notebase/
 │   ├── base.py         # NoteStore contract
 │   ├── mongo.py        # MongoDB + Vector Search
 │   └── memory.py       # in-memory, for tests
-└── cli.py              # `notebase write` / `notebase find`
+├── cli.py              # `notebase write` / `notebase find`
+└── mcp_server.py       # the same two verbs as MCP tools, for Claude Code and other LLM clients
 ```
 
 ## Quickstart
@@ -242,6 +243,59 @@ Things to know:
 * On Apple Silicon the model runs on the GPU (MPS) by default. This is **not tested**; if it errors or is slow,
   `export NOTEBASE_DEVICE=cpu`.
 
+### Use it from Claude Code (or another MCP client)
+
+`notebase-mcp` is an [MCP](https://modelcontextprotocol.io) server over stdio, so an LLM assistant can write
+and find for you, and import notes in bulk. Install the extra and register the server:
+
+```bash
+pip install -e ".[mcp]"
+```
+
+```bash
+claude mcp add notebase --scope user -- "$(which notebase-mcp)"
+```
+
+Use the full path from your venv, as above, so the client doesn't need the venv activated. Pass settings with
+`-e`, for example `-e NOTEBASE_LLM=none`. Other clients take the same command in their JSON config:
+
+```json
+{ "mcpServers": { "notebase": { "command": "/path/to/Notebase/.venv/bin/notebase-mcp" } } }
+```
+
+| Tool | What it does |
+|---|---|
+| `write` | one thought, as text and/or file paths to attach |
+| `write_batch` | up to 50 thoughts in one call; each is its own capture, and a failed item doesn't stop the others. An item already written by an earlier batch is skipped, so a batch can be retried |
+| `import_files` | Markdown/text files and images from paths or folders on this machine, including Obsidian vaults (hidden folders like `.obsidian` skipped, text over 200 KB skipped). The files are read by the server, so their contents don't go through the assistant's context. A file imported before is skipped. `dry_run` lists what would be imported; 50 files per call, continue with `next_offset` |
+| `find` | a cue → clusters of related notes, seeds marked |
+
+Then ask in plain words, for example "import my notes in ~/Documents/journal into Notebase" or "what did I note
+about sleep?". These are batch forms of *write*, not new verbs: imported text goes through the same pipeline, so
+each file is split into atomic notes, tagged and linked. Things to know:
+
+* The server loads the embedding model on the first tool call and keeps it, so only the first call pays the ~7 s.
+* **Duplicates are skipped by content**: a file whose bytes were imported before (even renamed or moved) is
+  reported as `duplicate` and not written again, so an interrupted import can just be run again. A file you
+  edited since counts as new, and its old notes stay (there is no superseding yet).
+* **Markdown comes in as Obsidian shows it**, not as its source:
+
+  | Source | Imported as |
+  |---|---|
+  | `[[Sleep]]`, `[[Sleep\|deep sleep]]` | `Sleep`, `deep sleep` |
+  | `[[Sleep#Stages]]`, `[[#Stages]]`, `[[Sleep#^a1b2]]` | `Sleep > Stages`, `Stages`, `Sleep > ^a1b2` |
+  | `[text](Other.md)` | `text` (links to `https://…` are kept with their URL) |
+  | `![[board.png\|300]]`, `![](img/board.png)` | the image is attached to this note and described where it was embedded |
+  | `![[Other note]]` | `Other note` (that note is imported on its own) |
+  | front matter, `%% comments %%` | dropped |
+  | code blocks and `inline code` | kept exactly as written |
+
+  An embedded image is found next to the note, from the vault root, or anywhere in the vault by name, like
+  Obsidian does, and is not imported a second time on its own. Links are turned into text only; they don't become
+  links in Notebase's graph (notes get linked by meaning anyway).
+* With the LLM on, each imported file costs one Atomizer and one Enricher call (about 3 s and $0.0004 with Haiku, from
+  the per-call figures in [docs/llm.md](docs/llm.md); bulk import itself is not measured yet).
+
 ### Configuration
 
 | Variable | Default | |
@@ -297,7 +351,9 @@ Open work is tracked in [GitHub issues](https://github.com/saltfish-len/Notebase
 - [ ] **v2: Better memory**
   - [ ] Superseding and versioning of thoughts
   - [ ] Recency and frequency weighting (often-recalled notes get stronger)
-  - [ ] Import from Markdown / Obsidian vaults (flattened into atomic notes)
+  - [x] MCP server: write, batch write, bulk file import and find from Claude Code or any MCP client
+  - [x] Import from Markdown / Obsidian vaults (flattened into atomic notes), skipping files imported before
+  - [ ] Re-import of an edited file replaces its old notes (needs superseding); wikilinks as graph links
   - [ ] Voice and web-clip capture
 
 ---

@@ -20,8 +20,16 @@ class WritePipeline:
     linker: Linker
 
     def write(
-        self, text: str, source: str = "typed", attachments: list[Attachment] | None = None
+        self,
+        text: str,
+        source: str = "typed",
+        attachments: list[Attachment] | None = None,
+        fingerprint: str | None = None,
     ) -> WriteResult:
+        # 0. the same source was written before (e.g. a file imported twice): do nothing
+        if fingerprint and (earlier := self.store.find_capture(fingerprint)):
+            return WriteResult(capture=earlier, notes=[], duplicate=True)
+
         # 1. capture: keep the raw input (typed text + file references) verbatim
         capture = Capture(text=text, source=source, attachments=list(attachments or []))
         self.store.save_capture(capture)
@@ -58,4 +66,8 @@ class WritePipeline:
             note.links = list(self.store.get_notes([note.id])[note.id].links)
             notes.append(note)
 
+        # 9. mark the capture finished, so a repeat of this source is skipped from now on
+        if fingerprint:
+            capture.fingerprint = fingerprint
+            self.store.save_capture(capture)
         return WriteResult(capture=capture, notes=notes)

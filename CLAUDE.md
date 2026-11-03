@@ -13,6 +13,7 @@ spreading over a link graph). Read `README.md` for the idea and
   - `embedders.py`: real Embedder (Qwen3-Embedding-0.6B, local). See `docs/embedding.md`.
   - `llm.py`: real Normalizer (image alt text), Atomizer and Enricher (Claude, Haiku 5.5 by default). See `docs/llm.md`.
 - `notebase/storage/`: `NoteStore` contract, MongoDB implementation, in-memory implementation for tests.
+- `notebase/mcp_server.py`: MCP front end (`notebase-mcp`); write / write_batch / import_files / find.
 - `notebase/app.py`: composition root and `Config` (all `NOTEBASE_*` env vars).
 - `docs/DEVLOG.md`: decisions and session history. **Add an entry when you finish a piece of work.**
 - Backlog: GitHub issues on `saltfish-len/Notebase`.
