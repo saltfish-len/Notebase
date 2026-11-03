@@ -24,9 +24,13 @@ mcp = ["mcp>=1.10"]  # MCP server for Claude Code and other LLM clients
 [project.scripts]
 notebase = "notebase.cli:main"
 notebase-mcp = "notebase.mcp_server:main"
+notebase-web = "notebase.server:main"
 
 [tool.setuptools.packages.find]
 include = ["notebase*"]
+
+[tool.setuptools.package-data]
+notebase = ["web/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
