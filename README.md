@@ -116,39 +116,131 @@ If a feature isn't *write* or *find*, it probably doesn't belong.
 
 ---
 
-## Architecture (proposed)
+## Architecture
+
+Python + **MongoDB** (notes, vectors via Atlas Vector Search `$vectorSearch`, and graph edges in one database).
+Every core algorithm is a **black box**: an interface that currently has a naive placeholder stub, so the
+whole system runs end to end while the real algorithms are built one box at a time.
 
 ```
-┌──────────────┐        ┌───────────────────────────────┐        ┌──────────────────────┐
-│   Client     │        │           Core                │        │       Storage        │
-│              │ write  │  Write pipeline               │        │                      │
-│  input box ──┼───────►│  (LLM: atomize / enrich)      ├───────►│  notes  (SQL)        │
-│              │        │  embedding model              │        │  vectors (ANN index) │
-│  graph view ◄┼────────┤  Find pipeline                │◄───────┤  edges  (graph)      │
-│              │  find  │  (hybrid search / spread /    │        │  raw captures        │
-└──────────────┘        │   cluster / label)            │        └──────────────────────┘
-                        └───────────────────────────────┘
+                write                                              find
+                  │                                                  │
+   ┌──────────────▼──────────────┐                   ┌───────────────▼──────────────┐
+   │ WritePipeline               │                   │ FindPipeline                 │
+   │  [Atomizer]                 │                   │  [QueryInterpreter]          │
+   │  [Contextualizer]           │                   │  [Retriever]   ◄── $vectorSearch + $text
+   │  [Enricher]                 │                   │  [Spreader]    ◄── notes.links
+   │  [Embedder]                 │                   │  [Clusterer]                 │
+   │  [Linker]  ◄── $vectorSearch│                   │  [Labeler]                   │
+   └──────────────┬──────────────┘                   └───────────────┬──────────────┘
+                  │                                                  │
+                  ▼                                                  ▼
+        ┌──────────────────── NoteStore ────────────────────┐   FindResult
+        │ MongoDB: captures · notes{embedding, links}       │   (seeds, notes, edges,
+        │ (InMemoryNoteStore for tests)                     │    clusters → graph view)
+        └───────────────────────────────────────────────────┘
 ```
 
-- **LLM layer**: atomizing, contextualizing, keyword and tag extraction, query expansion, cluster labelling. The provider is pluggable, and local models are supported.
-- **Embedding layer**: a pluggable embedding model.
-- **Storage**: local-first by default. A single SQLite file with a vector extension can hold notes, vectors, and edges, so your memory stays on your machine.
-- **Client**: a minimal UI with one input box and one graph canvas.
+See **[docs/architecture.md](docs/architecture.md)** for the diagrams, each black box's contract and
+stub, and the MongoDB data model.
 
-The tech stack is not final. See the roadmap.
+```
+notebase/
+├── app.py              # composition root: Notebase.write / Notebase.find
+├── write.py            # WritePipeline (orchestration only)
+├── find.py             # FindPipeline  (orchestration only)
+├── models.py           # Capture, Note, Link, Query, FindResult, ...
+├── blackbox/
+│   ├── interfaces.py   # the 10 black-box Protocols
+│   ├── embedders.py    # real Embedder (Qwen3 via sentence-transformers)
+│   ├── llm.py          # real Atomizer + Enricher (Claude)
+│   └── stubs.py        # placeholder implementations
+├── storage/
+│   ├── base.py         # NoteStore contract
+│   ├── mongo.py        # MongoDB + Vector Search
+│   └── memory.py       # in-memory, for tests
+└── cli.py              # `notebase write` / `notebase find`
+```
+
+## Quickstart
+
+```bash
+docker compose up -d          # MongoDB with Vector Search (mongodb-atlas-local)
+pip install torch --index-url https://download.pytorch.org/whl/cpu   # CPU-only torch (skip if you have a GPU)
+pip install -e ".[dev]"
+```
+
+```bash
+notebase write "Deep sleep consolidates memory in the hippocampus."
+notebase write "Coffee in the afternoon hurts deep sleep."
+notebase write "Spaced repetition helps long-term retention."
+notebase find "怎么记得更牢"
+```
+
+```
+◆ ...
+  ★ [1.00] Spaced repetition helps long-term retention.
+  ★ [0.97] Deep sleep consolidates memory in the hippocampus.
+  · [0.21] Coffee in the afternoon hurts deep sleep.
+```
+
+★ marks a seed note the query hit directly. · marks a note reached by association. `--json` gives the full
+`FindResult` (nodes, edges, clusters) for a graph UI.
+
+The first run downloads the embedding model, [Qwen3-Embedding-0.6B](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B)
+(about 1.2 GB). It runs locally on CPU, CUDA or Apple Silicon, so notes never leave your machine. It works across
+Chinese and English, so a cue in one language finds notes written in the other. See
+[docs/embedding.md](docs/embedding.md) for why this model was chosen.
+
+### Configuration
+
+| Variable | Default | |
+|---|---|---|
+| `NOTEBASE_MONGO_URI` | `mongodb://localhost:27017/?directConnection=true` | |
+| `NOTEBASE_DB` | `notebase` | one database = one embedding model |
+| `NOTEBASE_EMBEDDER` | `qwen3-0.6b` | preset (`qwen3-0.6b`, `bge-m3`, `minilm-multilingual`), `hashing` (offline stub), or any sentence-transformers model id |
+| `NOTEBASE_EMBED_DIM` | model native | truncate Matryoshka models, e.g. `256` for Qwen3 |
+| `NOTEBASE_SIMILARITY_FLOOR` | `0.3` | only for custom model ids: the cosine an unrelated pair typically gets |
+| `NOTEBASE_LLM` | `anthropic` | `anthropic`: LLM Atomizer + Enricher on Claude; `none`: stubs only, fully offline |
+| `NOTEBASE_LLM_MODEL` | `claude-haiku-5-5` | model for both LLM boxes |
+| `NOTEBASE_ATOMIZER_MODEL` / `NOTEBASE_ENRICHER_MODEL` | (unset) | per-box override, e.g. atomize with Sonnet, enrich with Haiku |
+| `ANTHROPIC_API_KEY` (or `CLAUDE_API_KEY`) | (unset) | Claude API key from the [Claude Console](https://platform.claude.com/) |
+
+Without a working API key, writes still succeed: the LLM boxes log a warning and fall back to their stubs.
+
+A database remembers which model wrote its vectors and refuses to run with a different one, because vectors from
+different models can't be compared.
+
+### Tests
+
+```bash
+pytest
+```
+
+```bash
+NOTEBASE_TEST_MONGO_URI="mongodb://localhost:27017/?directConnection=true" NOTEBASE_TEST_MODEL=1 pytest
+```
+
+The first command is fast: it uses the in-memory store and the hashing stub. The second also runs the MongoDB
+integration tests and the real-model tests.
 
 ---
 
 ## Roadmap
 
-- [ ] **v0: Core loop (CLI)**
-  - [ ] `notebase write "..."` runs the full write pipeline
-  - [ ] `notebase find "..."` returns seed notes and their clustered neighbourhood as text
-  - [ ] Local SQLite + vector storage
+Open work is tracked in [GitHub issues](https://github.com/saltfish-len/Notebase/issues). Decisions and history are in [docs/DEVLOG.md](docs/DEVLOG.md).
+
+- [x] **v0: Skeleton**: full write/find pipelines on MongoDB, with every algorithm as a stubbed black box
+- [ ] **v0.x: Fill the black boxes**
+  - [x] Real embedding model (Qwen3-Embedding-0.6B, local)
+  - [x] LLM Atomizer + Enricher (Claude Haiku 5.5; see [docs/llm.md](docs/llm.md))
+  - [x] Measure Haiku vs Sonnet for the LLM boxes: Haiku is enough after prompt fixes ([#1](https://github.com/saltfish-len/Notebase/issues/1))
+  - [ ] Find-side boxes: Labeler, Clusterer, Spreader, QueryInterpreter ([#4](https://github.com/saltfish-len/Notebase/issues/4))
+  - [ ] Chinese keyword search, vector index lag ([#6](https://github.com/saltfish-len/Notebase/issues/6))
+  - [ ] Re-embed when switching embedding models ([#5](https://github.com/saltfish-len/Notebase/issues/5))
 - [ ] **v1: Graph view**
-  - [ ] Web UI with a single input that switches between write and find
-  - [ ] Interactive zoomed-in subgraph for find results
-  - [ ] Click-to-recentre navigation
+  - [ ] Long-running server with a write/find HTTP API ([#2](https://github.com/saltfish-len/Notebase/issues/2))
+  - [ ] Web UI: one input for write and find, zoomed-in subgraph, click to re-centre ([#3](https://github.com/saltfish-len/Notebase/issues/3))
 - [ ] **v2: Better memory**
   - [ ] Superseding and versioning of thoughts
   - [ ] Recency and frequency weighting (often-recalled notes get stronger)

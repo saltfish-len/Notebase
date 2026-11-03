@@ -1,0 +1,15 @@
+# Local MongoDB with Atlas Vector Search ($vectorSearch) support.
+#   docker compose up -d
+#   export NOTEBASE_MONGO_URI="mongodb://localhost:27017/?directConnection=true"
+services:
+  mongodb:
+    image: mongodb/mongodb-atlas-local:8.0
+    ports:
+      - "27017:27017"
+    volumes:
+      - notebase-data:/data/db
+      - notebase-config:/data/configdb
+
+volumes:
+  notebase-data:
+  notebase-config:
