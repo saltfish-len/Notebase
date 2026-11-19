@@ -36,6 +36,9 @@ Cosine similarity of note pairs (normalized embeddings, no prompts):
 
 All three alternatives are still available as presets through `NOTEBASE_EMBEDDER`.
 
+EmbeddingGemma 2 (2026-11, text + image + audio in one space) has not been measured here yet; on
+MTEB it is behind Qwen3 on text. See [papers/embeddinggemma2.md](papers/embeddinggemma2.md).
+
 ### Query instruction
 
 Qwen3 is instruction-aware on the query side. Short *find* cues were tested

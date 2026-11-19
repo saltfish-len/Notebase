@@ -16,7 +16,7 @@ spreading over a link graph). Read `README.md` for the idea and
 - `notebase/mcp_server.py`: MCP front end (`notebase-mcp`); write / write_batch / import_files / find.
 - `notebase/app.py`: composition root and `Config` (all `NOTEBASE_*` env vars).
 - `notebase/server.py` + `notebase/web/index.html`: `notebase-web`, the two verbs over HTTP (stdlib only) and the graph UI.
-- `docs/papers/`: notes on research papers and what they mean for Notebase (LightMem, EM²Mem). Proposals there are not decisions yet.
+- `docs/papers/`: notes on research papers and what they mean for Notebase (LightMem, EM²Mem, EmbeddingGemma 2). Proposals there are not decisions yet.
 - `docs/DEVLOG.md`: decisions and session history. **Add an entry when you finish a piece of work.**
 - Backlog: GitHub issues on `saltfish-len/Notebase`.
 

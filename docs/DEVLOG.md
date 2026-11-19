@@ -106,6 +106,12 @@ Notes and feedback in `docs/papers/`. No code changed. All numbers there are the
 2. **[EM²Mem](papers/em2mem.md)** (arXiv 2609.00551): event-centric multimodal memory for long video. It binds evidence at construction time, and structured fields beat flattened captions. Gaps it points at in Notebase: entities are extracted but never used (the Linker is similarity only), and the Spreader cannot follow `capture_id` or time. Proposed: `shared-entity`, then `same-capture` and `temporal` links, kept only if a find evaluation supports them.
 3. **Common lesson**: in both papers the simplest baseline is close (NaiveRAG ties LightMem on GLM-4.6; EM²Mem's local-records-only variant is 2 points behind, and any single ablation falls below it). Before the find-side boxes in [#4](https://github.com/saltfish-len/Notebase/issues/4), build a find evaluation (evidence recall@k for seeds and for the region) with a Retriever-only baseline.
 
+### 2026-11-19: EmbeddingGemma 2 read against the Embedder
+
+Notes and feedback in [`docs/papers/embeddinggemma2.md`](papers/embeddinggemma2.md) (arXiv 2610.37364). No code changed. All numbers there are the paper's; none are measured here.
+
+EmbeddingGemma 2 (Google, 744M, 768-d with Matryoshka down to 128) embeds text, images, audio and video in one space; text-only it is 271M. By the paper's own tables it is behind Qwen3-Embedding-0.6B on text (MTEB Multilingual 61.4 vs 64.3, retrieval 60.8 vs 64.6), with no Chinese breakdown, so there is no case for switching the text Embedder on benchmarks. Worth measuring with our pair test anyway: it is trained for calibrated scores (unrelated pairs pushed toward cosine 0), which would mean a low `similarity_floor`, and it is half the size. Where it could matter: native image vectors would make images findable without the API, and native audio beat ASR + text by 12 MRR points on MSEB, which bears on the planned voice-memo Normalizer. Both need the `Embedder` Protocol to accept media, a whole-database switch (one vector space per database), and file bytes at embed time (D11).
+
 ### 2026-11-02: tag-only cues and the whole graph (`#all`)
 
 1. **Bug: a cue of tags only (`#active-matter`) found nothing.** With the tags stripped, the cue was empty: no keywords, and the embedding of a blank string scored below the vector threshold. Now `SimpleQueryInterpreter` skips the embedder for such a cue, and `RRFRetriever` seeds every note with those tags (up to `max_tagged=50`), so they come back with their neighbours.
