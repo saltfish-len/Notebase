@@ -17,6 +17,7 @@ spreading over a link graph). Read `README.md` for the idea and
 - `notebase/app.py`: composition root and `Config` (all `NOTEBASE_*` env vars).
 - `notebase/server.py` + `notebase/web/index.html`: `notebase-web`, the two verbs over HTTP (stdlib only) and the graph UI.
 - `docs/papers/`: notes on research papers and what they mean for Notebase (LightMem, EM²Mem). Proposals there are not decisions yet.
+- `.claude/skills/grilling/`: the `grilling` skill (from mattpocock/skills, unchanged): interviews the user round by round to settle a plan before acting on it. Good for turning a `docs/papers/` proposal into a decision.
 - `docs/DEVLOG.md`: decisions and session history. **Add an entry when you finish a piece of work.**
 - Backlog: GitHub issues on `saltfish-len/Notebase`.
 
