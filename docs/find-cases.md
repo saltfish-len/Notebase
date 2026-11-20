@@ -46,4 +46,6 @@ evaluation): query expansion of intent questions in the QueryInterpreter
 (HyDE-style: write the kind of note that would answer, embed that); Enricher
 tags for entity type (food, place) so a cue can match by type; a recency term
 in the Spreader or ranking; and checking whether a write should refuse or flag
-text that is only a reserved cue like `#all`.
+text that is only a reserved cue like `#all`. A longer shot: a small model
+with memory experts that generates note ids for a cue, see
+[papers/sleep.md](papers/sleep.md).

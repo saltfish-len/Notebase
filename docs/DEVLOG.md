@@ -128,3 +128,7 @@ uv support, alongside pip: `uv.lock` is committed and `uv sync --all-extras` ins
 ### 2026-11-20: first find case (吃什么)
 
 Docs only. New [find-cases.md](find-cases.md) collects real finds that went wrong, as test cases for the find evaluation. F1: the cue `吃什么` returned the cooking note as a seed and the wanted note, 楼下开了一家新的麻辣烫, only by spreading (activation 0.08). The cue asks for an option, not for the most similar topic. Hypotheses and directions are recorded there, none measured.
+
+### 2026-11-20: idea, notes as generated expert weights
+
+Docs only. [papers/sleep.md](papers/sleep.md): Google's sleep framework (arXiv 2606.03979; only the blog post read) consolidates short-term memory into pre-allocated low-rank MoE experts while the model is offline. The user's idea: a small Qwen with empty memory experts whose weights a hypernetwork generates from the notes. Feedback recorded there: weights can only be a derived index beside the store (they cannot cite or delete), best used to generate note ids for a cue such as F1's `吃什么`; first the find evaluation, then a plain SFT LoRA in a sleep job as the cheap test, and a hypernetwork only if that wins. Nothing measured.
