@@ -1,4 +1,4 @@
-# Paper notes: the sleep framework (Google), and an idea: notes as generated expert weights
+# Paper notes: the sleep framework (Google), and an idea: memory inserted like context
 
 **The sleep framework: a new way for LLMs to retain knowledge in continual learning.** Behrouz,
 Hashemi, Javanmard, Mirrokni (Google Research, Cornell, USC).
@@ -33,31 +33,59 @@ no limitations; the paper may.
 
 ## The idea (user, 2026-11-20)
 
-Do the same for Notebase, but replace the training step with a model:
+**Goal: memory that is no longer external, but goes into the model as efficiently as context does.**
+Today's loop is external: retrieve notes, paste them in as text, pay for every token, every time. The
+goal is for the notes to be part of the model's forward pass instead.
+
+Proposed route:
 
 1. Take a small open model (a small Qwen) and add **empty MoE branches reserved for memory**.
 2. Their weights are not trained by gradient descent at sleep time. A **hypernetwork** generates them
-   from the notes.
-3. The generated weights *are* the memory: the model "knows" the notes without retrieving them.
+   from the notes, in one forward pass.
+3. The generated weights *are* the memory: plugged in, the model knows the notes without retrieving or
+   reading them.
 
 ## Feedback
 
-### Where it fits, and where it does not
+### The spectrum between context and weights
 
-Notebase's promise is that *find* returns **your notes**, verbatim and traceable to a capture. Weights
-cannot cite, cannot be cleanly edited or deleted, and can make things up. So parametric memory cannot
-replace the store. It can sit *beside* it, as a derived index, the same status embeddings have today:
-rebuilt from the notes at any time, never the source of truth. That also keeps the rule that a write
-never fails because of a model: the weights are produced later, in a sleep job (a maintenance tool, not
-a new verb), and a find still works without them.
+"As efficient as context" has a precise meaning: inserting memory should be cheap, need no training at
+insert time, and compose (add a group of notes, take it out again). The ways to hand knowledge to a
+model sit on one line:
 
-The most useful place for it is the **Retriever / QueryInterpreter**, and the motivating case is
+| Form | Insert cost | Use cost per query | Exact? |
+| --- | --- | --- | --- |
+| Text in the context (Notebase today, after *find*) | none | every token, every query | yes |
+| Precomputed KV cache of the notes | one prefill | memory grows with the notes | yes |
+| Compressed soft tokens per note (gist tokens, ICAE, xRAG) | one encoder pass | a few tokens per note | lossy |
+| Trained KV cache per corpus (Cartridges) | training | fixed | lossy |
+| Trained experts / LoRA (the sleep framework) | training | fixed | lossy |
+| **Generated experts (this idea)** | **one hypernetwork pass** | **fixed** | lossy |
+
+The idea is the last row: the hypernetwork turns "training" into "insertion", which is exactly what makes
+weights behave like context. That is the right target. The rows above it are the stepping stones, and
+each one can be measured against the first row on the same evaluation.
+
+### What stays external
+
+The goal moves memory *into* the model; it does not remove the notes. Weights are lossy, cannot cite,
+cannot be cleanly edited or deleted, and can make things up. So the split is: **the notes are what is
+remembered (source of truth, written by *write*), the generated weights are the loaded form (how the
+model uses them)**. The weights can be rebuilt from the notes at any time, like embeddings today, and are
+produced after the write (a sleep job is a maintenance tool, not a new verb), so a write never fails
+because of a model. Deleting a note means regenerating its group's expert, which is cheap only because
+generation is a forward pass and not training: one more reason the hypernetwork matters.
+
+*Find* keeps its contract: what it shows the user are real notes. With memory inside the model, it can
+also show what the model concluded, as long as each conclusion points at notes that the store confirms.
+
+### What it would fix: F1
+
 [F1](../find-cases.md#f1-吃什么-bad-example-2026-11-20): `吃什么` should bring up "a new malatang place
-opened downstairs". Cosine similarity cannot make that jump; a model that has absorbed the notes might.
-Concretely: the memory-augmented model reads the cue and **generates note ids** (or rewrites the cue into
-note-like text), and those ids are then looked up in the store. Every answer is still a real note, and a
-wrong id is harmless. This is generative retrieval in the style of the Differentiable Search Index
-(Tay et al., 2022), personalised by the memory experts.
+opened downstairs". Cosine similarity cannot make that jump, because the cue and the note share no topic,
+only an inference (malatang is food, a new place is an option). A model that holds the notes in its
+weights does the inference in the same pass that reads the cue. External retrieval has to guess the right
+notes *before* the model ever thinks about them; internal memory does not.
 
 ### Prior work to read first (from memory, not checked in this session)
 
@@ -67,6 +95,8 @@ wrong id is harmless. This is generative retrieval in the style of the Different
 - Hypernetwork-based model editing: MEND (Mitchell et al., 2021).
 - Trained per-corpus memory instead of context: Cartridges (2025, a baseline in the sleep paper).
 - Large sparse memory layers: Memory Layers at Scale (Meta, 2024).
+- Compressing text into a few soft tokens: Gisting (Mu et al., 2023), In-Context Autoencoder (Ge et al.,
+  2023), xRAG (2024).
 
 ### Open problems
 
@@ -84,13 +114,19 @@ wrong id is harmless. This is generative retrieval in the style of the Different
 
 ### Order of work (proposal)
 
-1. The find evaluation first (see [em2mem.md](em2mem.md)), with F1 and later cases in it, and a
-   Retriever-only baseline. Nothing below is worth building without it.
-2. Cheap check that parametric memory helps at all: a sleep job that trains one LoRA on a small Qwen with
-   ordinary SFT, on synthetic (question → note id) pairs generated from the notes. Compare with the
-   baseline on the evaluation.
-3. Only if step 2 wins: replace that training with a hypernetwork (start from Text-to-LoRA or Generative
-   Adapter rather than from scratch), and measure what is lost against the trained LoRA.
+Each step is measured against "notes as text in the context" on the find evaluation, so it is clear
+what each step costs in quality and saves in tokens.
+
+1. The find evaluation (see [em2mem.md](em2mem.md)), with F1 and later cases, and a Retriever-only
+   baseline.
+2. Soft tokens per note: an encoder (ICAE / gist style, on a small Qwen) compresses each note into a few
+   vectors at write time, stored next to its embedding; found notes go in as those vectors instead of
+   text. Cheapest test of "memory inserted, not read".
+3. Does parametric memory help at all: a sleep job that trains one LoRA on a small Qwen with ordinary
+   SFT on questions generated from the notes. Compare with steps 1 and 2.
+4. Only if step 3 wins: replace that training with a hypernetwork that generates memory experts per group
+   of notes (start from Text-to-LoRA or Generative Adapter rather than from scratch), and measure what is
+   lost against the trained LoRA. This is the goal state.
 
 ## Proposed actions
 
@@ -98,5 +134,6 @@ wrong id is harmless. This is generative retrieval in the style of the Different
 | --- | --- | --- |
 | Read the paper (model sizes, compute, baselines, limitations) | this note | not done |
 | Find evaluation with F1 as a case | `scripts/`, [#4](https://github.com/saltfish-len/Notebase/issues/4) | proposed (shared with lightmem.md, em2mem.md) |
-| Generative-retrieval LoRA trained in a sleep job, against the baseline | maintenance tool + Retriever | idea |
-| Hypernetwork-generated memory experts | Retriever | idea, after the above |
+| Soft-token note memory (ICAE / gist style) against text in context | Embedder side + find | idea |
+| SFT LoRA of the notes in a sleep job | maintenance tool | idea |
+| Hypernetwork-generated memory experts (the goal) | model + maintenance tool | idea, after the above |
